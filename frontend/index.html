@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proxmox Samba GUI</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%97%82%EF%B8%8F%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <header id="topbar" hidden>
+    <div class="brand">
+      <span class="brand-mark">▣</span>
+      <span class="brand-name">Proxmox <b>Samba</b> GUI</span>
+    </div>
+    <nav id="nav">
+      <a href="#/shares" data-nav="shares" data-i18n="nav.shares"></a>
+      <a href="#/users" data-nav="users" data-i18n="nav.users"></a>
+      <a href="#/groups" data-nav="groups" data-i18n="nav.groups"></a>
+      <a href="#/settings" data-nav="settings" data-i18n="nav.settings"></a>
+    </nav>
+    <div class="topbar-right">
+      <button id="lang-toggle" class="ghost"></button>
+      <button id="logout" class="ghost" data-i18n="nav.logout"></button>
+    </div>
+  </header>
+  <main id="view"></main>
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+  <script src="app.js"></script>
+</body>
+</html>

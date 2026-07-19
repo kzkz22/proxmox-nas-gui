@@ -1,0 +1,5 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-pam>=2.0
+# python-pam imports six but does not declare it as a dependency
+six>=1.16
