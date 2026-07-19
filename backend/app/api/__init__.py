@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from ..auth import current_user, router as auth_router
-from . import fs, groups, settings, shares, users
+from . import disks, fs, groups, pools, settings, shares, users
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
@@ -12,4 +12,6 @@ protected.include_router(users.router)
 protected.include_router(groups.router)
 protected.include_router(settings.router)
 protected.include_router(fs.router)
+protected.include_router(pools.router)
+protected.include_router(disks.router)
 api_router.include_router(protected)

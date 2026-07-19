@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from .. import service, state as state_store, system
+from .. import pools as pool_ops, service, state as state_store, system
 from ..models import GlobalSettings
 from .common import commit
 
@@ -23,6 +23,12 @@ def full_state():
                 "members": system.group_members(name),
             }
             for name, info in st.groups.items()
+        },
+        "pools": {name: pool_ops.pool_info(p) for name, p in st.pools.items()},
+        "disk_mounts": {
+            name: {**dm.model_dump(),
+                   "mounted": pool_ops.is_mounted(dm.mountpoint)}
+            for name, dm in st.disk_mounts.items()
         },
         "service": service.status(),
     }

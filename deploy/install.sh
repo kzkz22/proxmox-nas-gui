@@ -18,7 +18,7 @@ REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 echo "==> Installing packages (samba, python3-venv, openssl)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq samba python3-venv openssl libpam0g
+apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g
 
 echo "==> Copying application to ${INSTALL_DIR}"
 mkdir -p "$INSTALL_DIR"

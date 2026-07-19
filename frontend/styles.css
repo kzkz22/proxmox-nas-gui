@@ -178,3 +178,16 @@ form.panel, .panel {
 .svc-dot.off { background: var(--danger); }
 
 .matrix-note { font-size: .85rem; color: var(--text-dim); margin-bottom: .6rem; }
+
+.usage-bar { background: var(--bg); border: 1px solid var(--border); border-radius: 99px; height: .8rem; overflow: hidden; min-width: 8rem; }
+.usage-fill { height: 100%; background: var(--ok); }
+.usage-fill.warn { background: var(--accent); }
+.usage-fill.crit { background: var(--danger); }
+.usage-label { font-size: .78rem; color: var(--text-dim); margin-top: .2rem; white-space: nowrap; }
+
+.branch-row { display: flex; gap: .6rem; align-items: center; padding: .45rem .6rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: .4rem; background: var(--bg); }
+.branch-row .mono { flex: 1; overflow-x: auto; white-space: nowrap; }
+.branch-row select { font: inherit; background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: .2rem .4rem; flex: 0 0 auto; width: 5.5rem; }
+
+.chip { display: inline-block; font-size: .8rem; padding: .2rem .65rem; border: 1px dashed var(--accent-dim); color: var(--accent); border-radius: 99px; cursor: pointer; margin: .15rem .25rem .15rem 0; background: transparent; }
+.chip:hover { background: rgba(255, 140, 47, .12); border-style: solid; }
