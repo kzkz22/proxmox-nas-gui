@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from .. import pools, state as state_store
+from ..core.deps import blockers_for_path
 from ..models import Pool
 
 router = APIRouter(prefix="/pools", tags=["pools"])
@@ -48,7 +49,7 @@ def update_pool(name: str, pool: Pool):
             raise HTTPException(404, "no such pool")
         _check_conflicts(st, pool, ignore=name)
         if pool.mountpoint != old.mountpoint:
-            deps = pools.dependent_shares(st, old.mountpoint)
+            deps = blockers_for_path(st, old.mountpoint)
             if deps:
                 raise HTTPException(
                     409, "shares depend on this pool's mountpoint: " + ", ".join(deps)
@@ -66,7 +67,7 @@ def delete_pool(name: str):
         pool = st.pools.get(name)
         if not pool:
             raise HTTPException(404, "no such pool")
-        deps = pools.dependent_shares(st, pool.mountpoint)
+        deps = blockers_for_path(st, pool.mountpoint)
         if deps:
             raise HTTPException(
                 409, "shares depend on this pool: " + ", ".join(deps)
@@ -94,7 +95,7 @@ def unmount_pool(name: str):
     pool = st.pools.get(name)
     if not pool:
         raise HTTPException(404, "no such pool")
-    deps = pools.dependent_shares(st, pool.mountpoint)
+    deps = blockers_for_path(st, pool.mountpoint)
     if deps:
         raise HTTPException(409, "shares depend on this pool: " + ", ".join(deps))
     pools.unmount_pool(pool)

@@ -152,14 +152,6 @@ def list_block_devices() -> List[dict]:
     return poolconf.parse_lsblk(out)
 
 
-def dependent_shares(state: State, mountpoint: str) -> List[str]:
-    prefix = mountpoint.rstrip("/") + "/"
-    return sorted(
-        name for name, share in state.shares.items()
-        if share.path == mountpoint.rstrip("/") or share.path.startswith(prefix)
-    )
-
-
 def pools_using_path(state: State, path: str) -> List[str]:
     p = path.rstrip("/")
     return sorted(
