@@ -120,10 +120,13 @@ egyszer figyelmeztetni fog.)
 ## Fejlesztés
 
 ```bash
-python3 -m venv venv && venv/bin/pip install -r backend/requirements.txt pytest
-venv/bin/python -m pytest tests/            # egységtesztek
+python3 -m venv venv && venv/bin/pip install -r backend/requirements-dev.txt
+venv/bin/python -m pytest                   # egységtesztek
 cd backend && ../venv/bin/uvicorn app.main:app --reload   # dev szerver
 ```
+
+A `pytest` a repó gyökeréből fut; a `backend/` könyvtárat a `pyproject.toml`
+teszi az import útvonalra.
 
 ---
 

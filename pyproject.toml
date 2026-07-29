@@ -1,0 +1,6 @@
+# Only pytest configuration lives here on purpose: the application is
+# deployed by copying backend/ and frontend/ into place (deploy/install.sh),
+# not by pip-installing a package, so there is no [project] section.
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+testpaths = ["tests"]
