@@ -16,11 +16,11 @@ from app.main import app
 
 # Kept in sync with the env vars documented in the README.
 PATH_ENV_VARS = (
-    "PSG_STATE_DIR",
-    "PSG_SMB_CONF",
-    "PSG_GEN_CONF",
-    "PSG_FSTAB",
-    "PSG_SYSTEMD_DIR",
+    "PNAS_STATE_DIR",
+    "PNAS_SMB_CONF",
+    "PNAS_GEN_CONF",
+    "PNAS_FSTAB",
+    "PNAS_SYSTEMD_DIR",
 )
 
 
@@ -28,18 +28,18 @@ PATH_ENV_VARS = (
 def sandbox(tmp_path, monkeypatch):
     """Redirect every file the application writes into tmp_path."""
     paths = {
-        "PSG_STATE_DIR": tmp_path / "state",
-        "PSG_SMB_CONF": tmp_path / "samba" / "smb.conf",
-        "PSG_GEN_CONF": tmp_path / "samba" / "generated.conf",
-        "PSG_FSTAB": tmp_path / "fstab",
-        "PSG_SYSTEMD_DIR": tmp_path / "systemd",
+        "PNAS_STATE_DIR": tmp_path / "state",
+        "PNAS_SMB_CONF": tmp_path / "samba" / "smb.conf",
+        "PNAS_GEN_CONF": tmp_path / "samba" / "generated.conf",
+        "PNAS_FSTAB": tmp_path / "fstab",
+        "PNAS_SYSTEMD_DIR": tmp_path / "systemd",
     }
     for name, path in paths.items():
         monkeypatch.setenv(name, str(path))
-    paths["PSG_STATE_DIR"].mkdir(parents=True)
-    paths["PSG_SMB_CONF"].parent.mkdir(parents=True)
-    paths["PSG_SYSTEMD_DIR"].mkdir(parents=True)
-    paths["PSG_SMB_CONF"].write_text("[global]\n")
+    paths["PNAS_STATE_DIR"].mkdir(parents=True)
+    paths["PNAS_SMB_CONF"].parent.mkdir(parents=True)
+    paths["PNAS_SYSTEMD_DIR"].mkdir(parents=True)
+    paths["PNAS_SMB_CONF"].write_text("[global]\n")
     return paths
 
 

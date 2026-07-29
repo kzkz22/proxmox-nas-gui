@@ -7,15 +7,15 @@ from ..core.proc import SystemOpError
 from ..models import State
 from . import sambaconf
 
-BACKUP_SUFFIX = ".psg-backup"
+BACKUP_SUFFIX = ".pnas-backup"
 
 
 def smb_conf_path() -> Path:
-    return Path(os.environ.get("PSG_SMB_CONF", "/etc/samba/smb.conf"))
+    return Path(os.environ.get("PNAS_SMB_CONF", "/etc/samba/smb.conf"))
 
 
 def gen_conf_path() -> Path:
-    return Path(os.environ.get("PSG_GEN_CONF", "/etc/samba/proxmox-samba-gui.conf"))
+    return Path(os.environ.get("PNAS_GEN_CONF", "/etc/samba/proxmox-nas-gui.conf"))
 
 
 def _include_line() -> str:
@@ -48,7 +48,7 @@ def validate(generated: str) -> None:
     the live files, so a bad change can never break the running Samba."""
     conf = smb_conf_path()
     base = conf.read_text() if conf.exists() else "[global]\n"
-    with tempfile.TemporaryDirectory(prefix="psg-testparm-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="pnas-testparm-") as tmp:
         gen = Path(tmp) / "generated.conf"
         gen.write_text(generated)
         master = Path(tmp) / "smb.conf"

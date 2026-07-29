@@ -6,7 +6,7 @@ from typing import Dict
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
-SESSION_COOKIE = "psg_session"
+SESSION_COOKIE = "pnas_session"
 SESSION_TTL = 24 * 3600
 
 _sessions: Dict[str, dict] = {}
@@ -17,7 +17,7 @@ router = APIRouter()
 def _allowed_users() -> list[str]:
     return [
         u.strip()
-        for u in os.environ.get("PSG_ADMIN_USERS", "root").split(",")
+        for u in os.environ.get("PNAS_ADMIN_USERS", "root").split(",")
         if u.strip()
     ]
 

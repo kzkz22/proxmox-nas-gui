@@ -1,4 +1,4 @@
-"""Pins the on-disk shape of /etc/proxmox-samba-gui/state.json.
+"""Pins the on-disk shape of /etc/proxmox-nas-gui/state.json.
 
 state.json is the source of truth for both the generated Samba config and the
 mergerfs pool units, and it is never migrated on read (state.load_state just

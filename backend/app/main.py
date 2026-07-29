@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from .core.proc import SystemOpError
 from .routes import api_router
 
-app = FastAPI(title="Proxmox Samba GUI", docs_url=None, redoc_url=None)
+app = FastAPI(title="Proxmox NAS GUI", docs_url=None, redoc_url=None)
 app.include_router(api_router)
 
 
@@ -18,7 +18,7 @@ def system_op_error(_request: Request, exc: SystemOpError):
 
 
 def frontend_dir() -> Path:
-    configured = os.environ.get("PSG_FRONTEND")
+    configured = os.environ.get("PNAS_FRONTEND")
     if configured:
         return Path(configured)
     return Path(__file__).resolve().parents[2] / "frontend"

@@ -9,7 +9,7 @@ lock = threading.Lock()
 
 
 def state_dir() -> Path:
-    return Path(os.environ.get("PSG_STATE_DIR", "/etc/proxmox-samba-gui"))
+    return Path(os.environ.get("PNAS_STATE_DIR", "/etc/proxmox-nas-gui"))
 
 
 def state_path() -> Path:

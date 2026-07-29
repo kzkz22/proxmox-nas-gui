@@ -45,7 +45,7 @@ def test_empty_state_still_returns_every_key(auth_client, sandbox):
 
 
 def test_stored_state_is_reported(auth_client, sandbox):
-    shutil.copy(FIXTURE, sandbox["PSG_STATE_DIR"] / "state.json")
+    shutil.copy(FIXTURE, sandbox["PNAS_STATE_DIR"] / "state.json")
 
     body = auth_client.get("/api/state").json()
 
@@ -62,7 +62,7 @@ def test_stored_state_is_reported(auth_client, sandbox):
 def test_pools_are_reported_with_live_mount_state(auth_client, sandbox):
     """pool_info decorates the stored pool with facts read from the running
     system, which are not in state.json."""
-    shutil.copy(FIXTURE, sandbox["PSG_STATE_DIR"] / "state.json")
+    shutil.copy(FIXTURE, sandbox["PNAS_STATE_DIR"] / "state.json")
 
     pool = auth_client.get("/api/state").json()["pools"]["media"]
 

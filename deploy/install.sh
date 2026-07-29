@@ -1,11 +1,11 @@
 #!/bin/bash
-# Installer for proxmox-samba-gui on a Proxmox VE host (or any Debian-based
+# Installer for proxmox-nas-gui on a Proxmox VE host (or any Debian-based
 # system, including LXC containers). Run as root from the repository root:
 #   ./deploy/install.sh
 set -euo pipefail
 
-INSTALL_DIR=/opt/proxmox-samba-gui
-CONF_DIR=/etc/proxmox-samba-gui
+INSTALL_DIR=/opt/proxmox-nas-gui
+CONF_DIR=/etc/proxmox-nas-gui
 PORT=8481
 
 if [[ $EUID -ne 0 ]]; then
@@ -48,13 +48,13 @@ if [[ ! -f "$CONF_DIR/cert.pem" ]]; then
 fi
 
 echo "==> Installing systemd service"
-cp "$REPO_DIR/deploy/proxmox-samba-gui.service" /etc/systemd/system/
+cp "$REPO_DIR/deploy/proxmox-nas-gui.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now smbd
 # "enable --now" only starts a stopped unit, so re-running the installer would
 # leave the previous process serving the old code. Restart explicitly.
-systemctl enable proxmox-samba-gui
-systemctl restart proxmox-samba-gui
+systemctl enable proxmox-nas-gui
+systemctl restart proxmox-nas-gui
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 echo

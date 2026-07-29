@@ -5,8 +5,8 @@ No filesystem or subprocess access here: everything operating on real
 
 Managed fstab lines are tagged with a trailing comment so they can be
 updated or removed without touching anything hand-written:
-    ... 0 0 # psg:pool:<name>
-    ... 0 2 # psg:disk:<name>
+    ... 0 0 # pnas:pool:<name>
+    ... 0 2 # pnas:disk:<name>
 """
 
 import json
@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple
 
 from .models import DiskMount, Pool
 
-TAG_RE = re.compile(r"#\s*psg:(pool|disk):(\S+)\s*$")
+TAG_RE = re.compile(r"#\s*pnas:(pool|disk):(\S+)\s*$")
 
 MOUNTABLE_EXCLUDE_FSTYPES = {
     "swap", "LVM2_member", "zfs_member", "crypto_LUKS", "linux_raid_member",
@@ -42,7 +42,7 @@ def branches_spec(pool: Pool) -> str:
 
 
 def pool_unit_name(pool_name: str) -> str:
-    return f"psg-pool-{pool_name}.service"
+    return f"pnas-pool-{pool_name}.service"
 
 
 def pool_unit(pool: Pool) -> str:
@@ -56,9 +56,9 @@ def pool_unit(pool: Pool) -> str:
     failed pool never drops the host into emergency mode.
     """
     branch_paths = " ".join(b.path for b in pool.branches)
-    return f"""# Managed by proxmox-samba-gui - DO NOT EDIT.
+    return f"""# Managed by proxmox-nas-gui - DO NOT EDIT.
 [Unit]
-Description=mergerfs pool {pool.name} (proxmox-samba-gui)
+Description=mergerfs pool {pool.name} (proxmox-nas-gui)
 After=local-fs.target
 RequiresMountsFor={branch_paths}
 
@@ -77,7 +77,7 @@ WantedBy=multi-user.target
 def disk_fstab_line(name: str, disk: DiskMount) -> str:
     return (
         f"UUID={disk.uuid} {disk.mountpoint} {disk.fstype} "
-        f"defaults,nofail 0 2 # psg:disk:{name}"
+        f"defaults,nofail 0 2 # pnas:disk:{name}"
     )
 
 

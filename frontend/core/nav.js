@@ -3,7 +3,7 @@
  *
  *  The key lives here rather than being spelled out at both ends, because a
  *  typo would produce no error - the field would just come up empty. */
-const PREFILL_PATH_KEY = "psg_prefill_path";
+const PREFILL_PATH_KEY = "pnas_prefill_path";
 
 export function setPrefillPath(path) {
   sessionStorage.setItem(PREFILL_PATH_KEY, path);

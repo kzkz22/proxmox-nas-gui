@@ -10,7 +10,7 @@ from ..models import State
 from .models import Access, ExportMode, Security, Share
 
 HEADER = (
-    "# Managed by proxmox-samba-gui - DO NOT EDIT.\n"
+    "# Managed by proxmox-nas-gui - DO NOT EDIT.\n"
     "# Changes are overwritten whenever the GUI applies its configuration.\n"
 )
 

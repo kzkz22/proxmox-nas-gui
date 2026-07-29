@@ -8,12 +8,12 @@ from ..models import State
 from . import poolconf
 from .models import Pool
 
-FSTAB_BACKUP_SUFFIX = ".psg-backup"
+FSTAB_BACKUP_SUFFIX = ".pnas-backup"
 XATTR_CTL = ".mergerfs"
 
 
 def fstab_path() -> Path:
-    return Path(os.environ.get("PSG_FSTAB", "/etc/fstab"))
+    return Path(os.environ.get("PNAS_FSTAB", "/etc/fstab"))
 
 
 def read_fstab() -> str:
@@ -26,14 +26,14 @@ def write_fstab(text: str) -> None:
     backup = p.with_name(p.name + FSTAB_BACKUP_SUFFIX)
     if p.exists() and not backup.exists():
         backup.write_text(p.read_text())
-    tmp = p.with_name(p.name + ".psg-tmp")
+    tmp = p.with_name(p.name + ".pnas-tmp")
     tmp.write_text(text)
     os.replace(tmp, p)
     subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=30)
 
 
 def systemd_dir() -> Path:
-    return Path(os.environ.get("PSG_SYSTEMD_DIR", "/etc/systemd/system"))
+    return Path(os.environ.get("PNAS_SYSTEMD_DIR", "/etc/systemd/system"))
 
 
 def _systemctl(*args: str) -> bool:

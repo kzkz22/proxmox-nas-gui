@@ -79,7 +79,7 @@ class GroupInfo(BaseModel):
 
 class GlobalSettings(BaseModel):
     workgroup: str = "WORKGROUP"
-    server_string: str = "Proxmox Samba GUI"
+    server_string: str = "Proxmox NAS GUI"
     netbios_name: str = ""
     min_protocol: str = "SMB2"
 

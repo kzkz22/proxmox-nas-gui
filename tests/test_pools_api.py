@@ -35,7 +35,7 @@ def stored(sandbox):
             "shares": shares or {},
             "pools": pools or {},
         }
-        (sandbox["PSG_STATE_DIR"] / "state.json").write_text(json.dumps(state))
+        (sandbox["PNAS_STATE_DIR"] / "state.json").write_text(json.dumps(state))
     return write
 
 

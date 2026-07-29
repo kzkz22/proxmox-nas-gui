@@ -5,7 +5,7 @@ export class ApiError extends Error {}
 /** Raised on a 401 instead of calling showLogin() directly. The login screen
  *  restarts the app, which needs the API client, so a direct call would make
  *  api.js and login.js import each other. */
-export const UNAUTHORIZED_EVENT = "psg:unauthorized";
+export const UNAUTHORIZED_EVENT = "pnas:unauthorized";
 
 export async function api(path, opts = {}) {
   const init = { headers: {}, ...opts };

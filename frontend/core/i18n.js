@@ -1,4 +1,4 @@
-const STORAGE_KEY = "psg_lang";
+const STORAGE_KEY = "pnas_lang";
 
 // One file per package, merged on load. The dictionaries are flat maps of
 // dotted keys, so a plain merge is enough - nesting them would break t().

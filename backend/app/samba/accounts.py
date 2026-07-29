@@ -40,7 +40,7 @@ def create_user(name: str, password: str, description: str = "") -> None:
     if not user_exists(name):
         run(
             ["useradd", "-M", "-s", "/usr/sbin/nologin",
-             "-c", description or "proxmox-samba-gui user", name]
+             "-c", description or "proxmox-nas-gui user", name]
         )
     set_smb_password(name, password)
 

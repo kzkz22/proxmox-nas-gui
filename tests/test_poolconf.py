@@ -56,7 +56,7 @@ def test_pool_unit_branch_modes():
         Branch(path="/mnt/disks/d3", mode=BranchMode.NC),
     ])
     unit = pool_unit(pool)
-    assert pool_unit_name("media") == "psg-pool-media.service"
+    assert pool_unit_name("media") == "pnas-pool-media.service"
     assert "RequiresMountsFor=/mnt/disks/d1 /mnt/disks/d2 /mnt/disks/d3" in unit
     assert (
         "ExecStart=/usr/bin/mergerfs -o " + mergerfs_options(pool)
@@ -70,7 +70,7 @@ def test_disk_fstab_line():
     disk = DiskMount(uuid="abcd-1234", fstype="ext4", mountpoint="/mnt/disks/d1")
     line = disk_fstab_line("d1", disk)
     assert line == (
-        "UUID=abcd-1234 /mnt/disks/d1 ext4 defaults,nofail 0 2 # psg:disk:d1"
+        "UUID=abcd-1234 /mnt/disks/d1 ext4 defaults,nofail 0 2 # pnas:disk:d1"
     )
 
 
@@ -99,34 +99,34 @@ def test_minfreespace_validated():
 
 
 def test_tag_parse():
-    assert parse_tag("x y z 0 0 # psg:pool:media") == ("pool", "media")
-    assert parse_tag("UUID=1 /m ext4 defaults 0 2 # psg:disk:d1") == ("disk", "d1")
+    assert parse_tag("x y z 0 0 # pnas:pool:media") == ("pool", "media")
+    assert parse_tag("UUID=1 /m ext4 defaults 0 2 # pnas:disk:d1") == ("disk", "d1")
     assert parse_tag("UUID=1 /m ext4 defaults 0 2") is None
 
 
 FSTAB = """# /etc/fstab: static file system information.
 UUID=root-uuid / ext4 errors=remount-ro 0 1
-UUID=abcd /mnt/disks/d1 ext4 defaults,nofail 0 2 # psg:disk:d1
+UUID=abcd /mnt/disks/d1 ext4 defaults,nofail 0 2 # pnas:disk:d1
 """
 
 
 def test_upsert_replaces_tagged_line():
-    out = upsert_line(FSTAB, "disk", "d1", "NEWLINE # psg:disk:d1")
+    out = upsert_line(FSTAB, "disk", "d1", "NEWLINE # pnas:disk:d1")
     assert "UUID=abcd" not in out
-    assert "NEWLINE # psg:disk:d1" in out
+    assert "NEWLINE # pnas:disk:d1" in out
     assert "UUID=root-uuid" in out
-    assert out.count("psg:disk:d1") == 1
+    assert out.count("pnas:disk:d1") == 1
 
 
 def test_upsert_appends_new_line():
-    out = upsert_line(FSTAB, "pool", "media", "POOLLINE # psg:pool:media")
-    assert out.endswith("POOLLINE # psg:pool:media\n")
+    out = upsert_line(FSTAB, "pool", "media", "POOLLINE # pnas:pool:media")
+    assert out.endswith("POOLLINE # pnas:pool:media\n")
     assert "UUID=abcd" in out
 
 
 def test_upsert_idempotent():
-    once = upsert_line(FSTAB, "pool", "media", "L # psg:pool:media")
-    twice = upsert_line(once, "pool", "media", "L # psg:pool:media")
+    once = upsert_line(FSTAB, "pool", "media", "L # pnas:pool:media")
+    twice = upsert_line(once, "pool", "media", "L # pnas:pool:media")
     assert once == twice
 
 

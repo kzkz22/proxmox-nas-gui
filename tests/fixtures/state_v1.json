@@ -2,7 +2,7 @@
   "version": 1,
   "settings": {
     "workgroup": "HOMELAB",
-    "server_string": "Proxmox Samba GUI",
+    "server_string": "Proxmox NAS GUI",
     "netbios_name": "TANK",
     "min_protocol": "SMB3"
   },
