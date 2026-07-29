@@ -11,16 +11,9 @@ serialised form without failing here.
 import json
 from pathlib import Path
 
-from app.models import (
-    Branch,
-    DiskMount,
-    GlobalSettings,
-    GroupInfo,
-    Pool,
-    Share,
-    State,
-    UserInfo,
-)
+from app.models import State
+from app.samba.models import GlobalSettings, GroupInfo, Share, UserInfo
+from app.storage.models import Branch, DiskMount, Pool
 
 FIXTURE = Path(__file__).parent / "fixtures" / "state_v1.json"
 

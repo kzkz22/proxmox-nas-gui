@@ -1,7 +1,14 @@
 import pytest
 
-from app.models import Access, ExportMode, GlobalSettings, Security, Share, State
-from app.sambaconf import generate
+from app.models import State
+from app.samba.models import (
+    Access,
+    ExportMode,
+    GlobalSettings,
+    Security,
+    Share,
+)
+from app.samba.sambaconf import generate
 
 
 def share_lines(conf: str, name: str) -> list[str]:

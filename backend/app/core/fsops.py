@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List
 
-from .core.proc import SystemOpError, run
+from .proc import SystemOpError, run
 
 RECYCLE_DIR = ".Recycle.Bin"
 

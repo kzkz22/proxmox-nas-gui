@@ -1,11 +1,12 @@
+"""The aggregate state endpoint the frontend polls after every change."""
+
 from fastapi import APIRouter
 
-from .. import pools as pool_ops, service, state as state_store
-from ..models import GlobalSettings
-from ..samba import accounts
-from .common import commit
+from .. import state as state_store
+from ...samba import accounts, service
+from ...storage import pools as pool_ops
 
-router = APIRouter(tags=["settings"])
+router = APIRouter(tags=["state"])
 
 
 @router.get("/state")
@@ -33,17 +34,3 @@ def full_state():
         },
         "service": service.status(),
     }
-
-
-@router.put("/settings")
-def update_settings(settings: GlobalSettings):
-    with state_store.lock:
-        st = state_store.load_state()
-        st.settings = settings
-        return commit(st)
-
-
-@router.post("/service/restart")
-def restart():
-    service.restart_samba()
-    return {"ok": True, "service": service.status()}

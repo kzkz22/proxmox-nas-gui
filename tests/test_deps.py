@@ -7,7 +7,9 @@ from under a live share, so it is tested on its own.
 """
 
 from app.core.deps import blockers_for_path
-from app.models import Pool, Share, State
+from app.models import State
+from app.samba.models import Share
+from app.storage.models import Pool
 
 
 def make_state(*paths: str) -> State:

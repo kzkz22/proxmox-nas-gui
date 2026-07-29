@@ -3,7 +3,7 @@ import os
 import threading
 from pathlib import Path
 
-from .models import State
+from ..models import State
 
 lock = threading.Lock()
 

@@ -6,7 +6,8 @@ Unraid-style Export/Security model is unit-testable in isolation.
 
 from typing import List
 
-from .models import Access, ExportMode, Security, Share, State
+from ..models import State
+from .models import Access, ExportMode, Security, Share
 
 HEADER = (
     "# Managed by proxmox-samba-gui - DO NOT EDIT.\n"

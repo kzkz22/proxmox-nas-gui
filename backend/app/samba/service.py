@@ -3,9 +3,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from ..core.proc import SystemOpError
+from ..models import State
 from . import sambaconf
-from .models import State
-from .core.proc import SystemOpError
 
 BACKUP_SUFFIX = ".psg-backup"
 

@@ -2,7 +2,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from .. import fsops, service, state as state_store
+from ...core import fsops, state as state_store
+from .. import service
 from ..models import Share
 from .common import commit, normalize_access
 

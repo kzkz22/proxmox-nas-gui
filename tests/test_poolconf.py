@@ -1,7 +1,7 @@
 import pytest
 
-from app.models import Branch, BranchMode, DiskMount, Pool
-from app.poolconf import (
+from app.storage.models import Branch, BranchMode, DiskMount, Pool
+from app.storage.poolconf import (
     disk_fstab_line,
     mergerfs_options,
     parse_lsblk,

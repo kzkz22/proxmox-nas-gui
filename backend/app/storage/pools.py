@@ -3,9 +3,10 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
+from ..core.proc import SystemOpError, run
+from ..models import State
 from . import poolconf
-from .models import Pool, State
-from .core.proc import SystemOpError, run
+from .models import Pool
 
 FSTAB_BACKUP_SUFFIX = ".psg-backup"
 XATTR_CTL = ".mergerfs"

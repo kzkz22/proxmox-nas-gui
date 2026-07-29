@@ -6,37 +6,14 @@ model, one file and one lock is deliberate: a share pointing into a pool means
 the two halves have an invariant between them, and splitting the file would
 turn that into a cross-file consistency problem with no way to write both
 atomically.
-
-The re-exports below let existing importers keep using `app.models`; they are
-removed once every caller reaches into the owning package directly.
 """
 
 from typing import Dict
 
 from pydantic import BaseModel, Field
 
-from .samba.models import (  # noqa: F401  (re-exported)
-    ACCOUNT_NAME_RE,
-    SHARE_NAME_RE,
-    UNSAFE_CONF_CHARS,
-    Access,
-    ExportMode,
-    GlobalSettings,
-    GroupInfo,
-    Security,
-    Share,
-    UserInfo,
-)
-from .storage.models import (  # noqa: F401  (re-exported)
-    CREATE_POLICIES,
-    MINFREESPACE_RE,
-    POOL_NAME_RE,
-    UNSAFE_FSTAB_CHARS,
-    Branch,
-    BranchMode,
-    DiskMount,
-    Pool,
-)
+from .samba.models import GlobalSettings, GroupInfo, Share, UserInfo
+from .storage.models import DiskMount, Pool
 
 
 class State(BaseModel):

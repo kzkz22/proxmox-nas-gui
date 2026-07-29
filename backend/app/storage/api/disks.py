@@ -3,7 +3,8 @@ import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .. import poolconf, pools, state as state_store
+from ...core import state as state_store
+from .. import poolconf, pools
 from ..models import DiskMount
 
 router = APIRouter(prefix="/disks", tags=["disks"])

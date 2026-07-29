@@ -3,9 +3,9 @@ from typing import Dict, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .. import state as state_store
+from ...core import state as state_store
+from .. import accounts
 from ..models import ACCOUNT_NAME_RE, Access, UserInfo
-from ..samba import accounts
 from .common import commit
 
 router = APIRouter(prefix="/users", tags=["users"])
