@@ -3,8 +3,9 @@ from typing import Dict, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .. import state as state_store, system
+from .. import state as state_store
 from ..models import ACCOUNT_NAME_RE, Access, UserInfo
+from ..samba import accounts
 from .common import commit
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -39,7 +40,7 @@ def list_users():
     st = state_store.load_state()
     return {
         "users": {
-            name: {"description": info.description, "system": system.user_exists(name)}
+            name: {"description": info.description, "system": accounts.user_exists(name)}
             for name, info in st.users.items()
         }
     }
@@ -55,9 +56,9 @@ def create_user(body: UserCreate):
         st = state_store.load_state()
         if body.name in st.users:
             raise HTTPException(409, "user already exists")
-        if system.user_exists(body.name):
+        if accounts.user_exists(body.name):
             raise HTTPException(409, "a system user with this name already exists")
-        system.create_user(body.name, body.password, body.description)
+        accounts.create_user(body.name, body.password, body.description)
         st.users[body.name] = UserInfo(description=body.description)
         return commit(st)
 
@@ -69,7 +70,7 @@ def update_user(name: str, body: UserUpdate):
         if name not in st.users:
             raise HTTPException(404, "no such user")
         if body.password:
-            system.set_smb_password(name, body.password)
+            accounts.set_smb_password(name, body.password)
         if body.description is not None:
             st.users[name].description = body.description
         if body.access is not None:
@@ -83,7 +84,7 @@ def delete_user(name: str):
         st = state_store.load_state()
         if name not in st.users:
             raise HTTPException(404, "no such user")
-        system.delete_user(name)
+        accounts.delete_user(name)
         del st.users[name]
         for share in st.shares.values():
             share.user_access.pop(name, None)

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from . import sambaconf
 from .models import State
-from .system import SystemOpError
+from .core.proc import SystemOpError
 
 BACKUP_SUFFIX = ".psg-backup"
 

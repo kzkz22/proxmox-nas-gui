@@ -1,26 +1,16 @@
+"""POSIX and Samba account management.
+
+A GUI user is always both: useradd creates the system account that owns the
+POSIX group memberships used by the access matrix, and smbpasswd creates the
+Samba account that actually authenticates over SMB. Only the Samba side of the
+application calls any of this.
+"""
+
 import grp
 import pwd
-import subprocess
 from typing import List
 
-
-class SystemOpError(Exception):
-    pass
-
-
-def run(cmd: List[str], input_text: str | None = None) -> str:
-    try:
-        proc = subprocess.run(
-            cmd, input=input_text, capture_output=True, text=True, timeout=30
-        )
-    except FileNotFoundError:
-        raise SystemOpError(f"command not found: {cmd[0]}")
-    except subprocess.TimeoutExpired:
-        raise SystemOpError(f"command timed out: {' '.join(cmd)}")
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        raise SystemOpError(f"{cmd[0]} failed: {detail}")
-    return proc.stdout
+from ..core.proc import SystemOpError, run
 
 
 def user_exists(name: str) -> bool:

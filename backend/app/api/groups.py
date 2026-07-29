@@ -3,8 +3,9 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .. import state as state_store, system
+from .. import state as state_store
 from ..models import ACCOUNT_NAME_RE, Access, GroupInfo
+from ..samba import accounts
 from .common import commit
 from .users import _apply_access
 
@@ -36,7 +37,7 @@ def list_groups():
         "groups": {
             name: {
                 "description": info.description,
-                "members": system.group_members(name),
+                "members": accounts.group_members(name),
             }
             for name, info in st.groups.items()
         }
@@ -51,11 +52,11 @@ def create_group(body: GroupCreate):
         st = state_store.load_state()
         if body.name in st.groups:
             raise HTTPException(409, "group already exists")
-        if system.group_exists(body.name):
+        if accounts.group_exists(body.name):
             raise HTTPException(409, "a system group with this name already exists")
         _check_members(st, body.members)
-        system.create_group(body.name)
-        system.set_group_members(body.name, body.members)
+        accounts.create_group(body.name)
+        accounts.set_group_members(body.name, body.members)
         st.groups[body.name] = GroupInfo(description=body.description)
         return commit(st)
 
@@ -68,7 +69,7 @@ def update_group(name: str, body: GroupUpdate):
             raise HTTPException(404, "no such group")
         if body.members is not None:
             _check_members(st, body.members)
-            system.set_group_members(name, body.members)
+            accounts.set_group_members(name, body.members)
         if body.description is not None:
             st.groups[name].description = body.description
         if body.access is not None:
@@ -82,7 +83,7 @@ def delete_group(name: str):
         st = state_store.load_state()
         if name not in st.groups:
             raise HTTPException(404, "no such group")
-        system.delete_group(name)
+        accounts.delete_group(name)
         del st.groups[name]
         for share in st.shares.values():
             share.group_access.pop(name, None)

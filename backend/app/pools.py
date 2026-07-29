@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from . import poolconf
 from .models import Pool, State
-from .system import SystemOpError, run
+from .core.proc import SystemOpError, run
 
 FSTAB_BACKUP_SUFFIX = ".psg-backup"
 XATTR_CTL = ".mergerfs"

@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .api import api_router
-from .system import SystemOpError
+from .core.proc import SystemOpError
 
 app = FastAPI(title="Proxmox Samba GUI", docs_url=None, redoc_url=None)
 app.include_router(api_router)

@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 
-from .. import pools as pool_ops, service, state as state_store, system
+from .. import pools as pool_ops, service, state as state_store
 from ..models import GlobalSettings
+from ..samba import accounts
 from .common import commit
 
 router = APIRouter(tags=["settings"])
@@ -14,13 +15,13 @@ def full_state():
         "settings": st.settings,
         "shares": st.shares,
         "users": {
-            name: {"description": info.description, "system": system.user_exists(name)}
+            name: {"description": info.description, "system": accounts.user_exists(name)}
             for name, info in st.users.items()
         },
         "groups": {
             name: {
                 "description": info.description,
-                "members": system.group_members(name),
+                "members": accounts.group_members(name),
             }
             for name, info in st.groups.items()
         },
