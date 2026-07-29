@@ -37,8 +37,11 @@ def test_scripts_are_served_as_javascript(client):
     """A browser refuses to run a module script unless the MIME type is a
     JavaScript one, and StaticFiles falls back to text/plain for extensions it
     does not know."""
-    content_type = client.get("/app.js").headers["content-type"]
-    assert content_type.split(";")[0] in ("text/javascript", "application/javascript")
+    for path in ("/main.js", "/core/api.js", "/samba/shares.js", "/storage/pools.js"):
+        content_type = client.get(path).headers["content-type"]
+        assert content_type.split(";")[0] in (
+            "text/javascript", "application/javascript"
+        ), f"{path} served as {content_type}"
 
 
 def test_other_assets_are_not_forced_to_revalidate(client):
