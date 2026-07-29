@@ -1,12 +1,14 @@
-import sys
-from pathlib import Path
-
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
-
-from app.models import Access, ExportMode, GlobalSettings, Security, Share, State
-from app.sambaconf import generate
+from app.models import State
+from app.samba.models import (
+    Access,
+    ExportMode,
+    GlobalSettings,
+    Security,
+    Share,
+)
+from app.samba.sambaconf import generate
 
 
 def share_lines(conf: str, name: str) -> list[str]:

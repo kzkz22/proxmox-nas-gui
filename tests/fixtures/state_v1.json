@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "settings": {
+    "workgroup": "HOMELAB",
+    "server_string": "Proxmox NAS GUI",
+    "netbios_name": "TANK",
+    "min_protocol": "SMB3"
+  },
+  "users": {
+    "alice": {
+      "description": "media user"
+    },
+    "bob": {
+      "description": ""
+    }
+  },
+  "groups": {
+    "family": {
+      "description": "household accounts"
+    }
+  },
+  "shares": {
+    "media": {
+      "name": "media",
+      "path": "/mnt/pool/media",
+      "comment": "Films and series",
+      "export": "hidden",
+      "security": "private",
+      "recycle": true,
+      "user_access": {
+        "alice": "write",
+        "bob": "read"
+      },
+      "group_access": {
+        "family": "read"
+      }
+    },
+    "public": {
+      "name": "public",
+      "path": "/srv/public",
+      "comment": "",
+      "export": "yes",
+      "security": "public",
+      "recycle": false,
+      "user_access": {},
+      "group_access": {}
+    }
+  },
+  "pools": {
+    "media": {
+      "name": "media",
+      "mountpoint": "/mnt/pool/media",
+      "branches": [
+        {
+          "path": "/mnt/disks/d1",
+          "mode": "RW"
+        },
+        {
+          "path": "/mnt/disks/d2",
+          "mode": "RO"
+        },
+        {
+          "path": "/mnt/disks/d3",
+          "mode": "NC"
+        }
+      ],
+      "create_policy": "epmfs",
+      "minfreespace": "20G",
+      "moveonenospc": false,
+      "extra_options": "cache.files=partial,dropcacheonclose=true"
+    }
+  },
+  "disk_mounts": {
+    "d1": {
+      "uuid": "1234abcd-56ef-78ab-90cd-1234567890ab",
+      "fstype": "ext4",
+      "mountpoint": "/mnt/disks/d1"
+    },
+    "d2": {
+      "uuid": "abcd1234-ef56-ab78-cd90-ab0987654321",
+      "fstype": "xfs",
+      "mountpoint": "/mnt/disks/d2"
+    }
+  }
+}

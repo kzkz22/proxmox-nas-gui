@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=7.0
+# TestClient dependency for the API-level tests
+httpx>=0.27

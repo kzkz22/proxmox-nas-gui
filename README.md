@@ -1,4 +1,4 @@
-# Proxmox Samba GUI
+# Proxmox NAS GUI
 
 Unraid-stílusú SMB (Samba) megosztás- és **mergerfs pool**-kezelő webes
 felület Proxmox VE-hez. *(English summary below.)*
@@ -72,8 +72,8 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
 Proxmox VE hoszton (vagy bármely Debian-alapú rendszeren, LXC-ben is), rootként:
 
 ```bash
-git clone https://github.com/kzkz22/proxmox-samba-gui.git
-cd proxmox-samba-gui
+git clone https://github.com/kzkz22/proxmox-nas-gui.git
+cd proxmox-nas-gui
 ./deploy/install.sh
 ```
 
@@ -83,10 +83,10 @@ egyszer figyelmeztetni fog.)
 
 ## Hogyan működik?
 
-- A beállítások *forrása* a `/etc/proxmox-samba-gui/state.json`, ebből
-  generálódik determinisztikusan a `/etc/samba/proxmox-samba-gui.conf`.
+- A beállítások *forrása* a `/etc/proxmox-nas-gui/state.json`, ebből
+  generálódik determinisztikusan a `/etc/samba/proxmox-nas-gui.conf`.
 - A meglévő `/etc/samba/smb.conf`-ot csak egyetlen `include` sorral egészíti
-  ki (az eredetiről biztonsági mentés készül: `smb.conf.psg-backup`).
+  ki (az eredetiről biztonsági mentés készül: `smb.conf.pnas-backup`).
 - Minden módosítás előtt `testparm` validálja a teljes új konfigurációt egy
   ideiglenes másolaton — hibás beállítás soha nem kerülhet a futó Samba alá.
 - Sikeres validálás után újratöltés `smbcontrol all reload-config`-gal,
@@ -97,39 +97,65 @@ egyszer figyelmeztetni fog.)
   fájlrendszer-szintű chown/chmod futtatást a meglévő fájlokon.
 - Megosztás törlésekor **a lemezen lévő adatok érintetlenek maradnak**.
 - A mergerfs poolokat generált **systemd unit** indítja
-  (`/etc/systemd/system/psg-pool-<név>.service`, `RequiresMountsFor`-ral a
+  (`/etc/systemd/system/pnas-pool-<név>.service`, `RequiresMountsFor`-ral a
   helyes boot-sorrendhez) — szándékosan nem fstab-ból, mert a Debian 12-es
   mergerfs 2.33 mount-helpere elutasítja a generikus fstab-opciókat, a
   bináris közvetlen hívása viszont minden verzión működik. Egy hibás pool
   így sosem viszi emergency módba a hosztot.
 - A diszk-mountok az `/etc/fstab`-ba kerülnek (`nofail`-lel), soronként
-  `# psg:disk:<név>` címkével — csak a saját sorainkat módosítjuk, az első
-  íráskor biztonsági mentés készül (`fstab.psg-backup`).
+  `# pnas:disk:<név>` címkével — csak a saját sorainkat módosítjuk, az első
+  íráskor biztonsági mentés készül (`fstab.pnas-backup`).
 
 ## Konfiguráció (környezeti változók)
 
 | Változó | Alapértelmezés | Leírás |
 |---|---|---|
-| `PSG_ADMIN_USERS` | `root` | GUI-ba beléphető rendszerfelhasználók (vesszővel elválasztva) |
-| `PSG_STATE_DIR` | `/etc/proxmox-samba-gui` | A state.json könyvtára |
-| `PSG_SMB_CONF` | `/etc/samba/smb.conf` | A fő Samba konfig |
-| `PSG_GEN_CONF` | `/etc/samba/proxmox-samba-gui.conf` | A generált konfig helye |
-| `PSG_FSTAB` | `/etc/fstab` | A diszk-mountok fstab fájlja |
-| `PSG_SYSTEMD_DIR` | `/etc/systemd/system` | A generált pool-unitok könyvtára |
+| `PNAS_ADMIN_USERS` | `root` | GUI-ba beléphető rendszerfelhasználók (vesszővel elválasztva) |
+| `PNAS_STATE_DIR` | `/etc/proxmox-nas-gui` | A state.json könyvtára |
+| `PNAS_SMB_CONF` | `/etc/samba/smb.conf` | A fő Samba konfig |
+| `PNAS_GEN_CONF` | `/etc/samba/proxmox-nas-gui.conf` | A generált konfig helye |
+| `PNAS_FSTAB` | `/etc/fstab` | A diszk-mountok fstab fájlja |
+| `PNAS_SYSTEMD_DIR` | `/etc/systemd/system` | A generált pool-unitok könyvtára |
 
 ## Fejlesztés
 
 ```bash
-python3 -m venv venv && venv/bin/pip install -r backend/requirements.txt pytest
-venv/bin/python -m pytest tests/            # egységtesztek
+python3 -m venv venv && venv/bin/pip install -r backend/requirements-dev.txt
+venv/bin/python -m pytest                   # egységtesztek
 cd backend && ../venv/bin/uvicorn app.main:app --reload   # dev szerver
 ```
+
+A `pytest` a repó gyökeréből fut; a `backend/` könyvtárat a `pyproject.toml`
+teszi az import útvonalra.
+
+### Felépítés
+
+A kód három részre oszlik, a backendben és a frontenden ugyanúgy:
+
+| | tartalom |
+|---|---|
+| `core/` | session, `state.json`, parancsfuttatás, mappa-tallózó, i18n, API-kliens |
+| `samba/` | megosztások, felhasználók, csoportok, `smb.conf` generálás |
+| `storage/` | mergerfs poolok, diszk-mountok |
+
+**A `samba/` és a `storage/` sosem importálja egymást, és a `core/` egyiket
+sem.** Mindkét felet csak a kompozíciós gyökerek látják: `backend/app/models.py`
+(a közös `State`), `routes.py`, `state_view.py`, illetve `frontend/main.js` és
+`pages.js`. A `tests/test_layering.py` ezt ellenőrzi is.
+
+A két rendszer két ponton találkozik, és mindkettő szándékosan a gyökerekben
+él: a `core/deps.blockers_for_path()` mondja meg, hogy egy pool leválasztását
+blokkolja-e valamelyik megosztás, a pool-mountpointot jelölő badge-et pedig a
+`main.js` injektálja a tallózóba.
+
+Új oldal felvételéhez elég egy leíró a csomag `pages.js`-ébe; a navigáció és a
+routing ebből generálódik.
 
 ---
 
 ## English summary
 
-**Proxmox Samba GUI** is an Unraid-style web UI for managing Samba shares,
+**Proxmox NAS GUI** is an Unraid-style web UI for managing Samba shares,
 users and groups on a Proxmox VE host (or any Debian-based system / LXC).
 It reproduces Unraid's Export (`No` / `Yes` / `Yes (hidden)`) and Security
 (`Public` / `Secure` / `Private`) model with a per-user/per-group access
@@ -148,6 +174,6 @@ units (`RequiresMountsFor` ordering) rather than fstab, which works on
 both mergerfs 2.33 (Debian 12) and newer.
 
 Install as root: `./deploy/install.sh`, then open `https://<host>:8481/`.
-Configuration lives in `/etc/proxmox-samba-gui/state.json`; the generated
+Configuration lives in `/etc/proxmox-nas-gui/state.json`; the generated
 Samba config is validated with `testparm` before every apply, and the
 existing `smb.conf` is only extended with a single `include` line.
