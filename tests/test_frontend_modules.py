@@ -22,10 +22,16 @@ def exports_of(path: Path) -> set[str]:
 
 
 def imports_of(path: Path) -> list[tuple[Path, list[str]]]:
+    """(module, imported names). "x as y" is recorded as x, the name the
+    target has to export."""
     out = []
     for names, spec in IMPORT_RE.findall(path.read_text()):
         target = (path.parent / spec).resolve()
-        out.append((target, [n.strip() for n in names.split(",") if n.strip()]))
+        wanted = [
+            n.strip().split(" as ")[0].strip()
+            for n in names.split(",") if n.strip()
+        ]
+        out.append((target, wanted))
     return out
 
 

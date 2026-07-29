@@ -2,7 +2,7 @@ import { api, clearState, S, UNAUTHORIZED_EVENT } from "./core/api.js";
 import { setEntryDecorator } from "./core/browser.js";
 import { loadLang, toggleLang } from "./core/i18n.js";
 import { showLogin } from "./core/login.js";
-import { route, startApp } from "./router.js";
+import { renderNav, route, startApp } from "./router.js";
 import { poolBadge } from "./storage/badges.js";
 
 // Composition root: the only place that wires the two halves together. The
@@ -25,6 +25,9 @@ document.getElementById("logout").addEventListener("click", async () => {
 });
 
 (async function boot() {
+  // Nav first: loadLang fills [data-i18n] elements, and the nav links are
+  // generated, so translating before they exist leaves the bar blank.
+  renderNav();
   await loadLang();
   try {
     await api("/session");

@@ -1,5 +1,9 @@
 const STORAGE_KEY = "psg_lang";
 
+// One file per package, merged on load. The dictionaries are flat maps of
+// dotted keys, so a plain merge is enough - nesting them would break t().
+const BUNDLES = ["core", "samba", "storage"];
+
 let lang = localStorage.getItem(STORAGE_KEY) || "hu";
 let dict = {};
 
@@ -8,17 +12,19 @@ export function currentLang() {
 }
 
 export async function loadLang() {
-  // Absolute path: relative URLs would resolve against this module's
-  // directory, not the document.
-  const res = await fetch(`/i18n/${lang}.json`);
-  dict = await res.json();
+  // Absolute paths: a relative URL would resolve against this module's
+  // directory rather than the document.
+  const parts = await Promise.all(
+    BUNDLES.map((b) => fetch(`/i18n/${b}/${lang}.json`).then((r) => r.json()))
+  );
+  dict = Object.assign({}, ...parts);
   document.documentElement.lang = lang;
   document.getElementById("lang-toggle").textContent = lang === "hu" ? "EN" : "HU";
   applyTranslations();
 }
 
-/** Fill every [data-i18n] element. Must run after any markup that carries
- *  those attributes has been inserted. */
+/** Fill every [data-i18n] element. Must run after the markup carrying those
+ *  attributes exists - the nav is generated, so order matters. */
 export function applyTranslations(root = document) {
   root.querySelectorAll("[data-i18n]").forEach((el) => {
     el.textContent = t(el.dataset.i18n);
