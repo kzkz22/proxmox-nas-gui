@@ -22,6 +22,10 @@ apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g
 
 echo "==> Copying application to ${INSTALL_DIR}"
 mkdir -p "$INSTALL_DIR"
+# cp -r merges into an existing tree, so files deleted or moved since the last
+# install would survive and stay importable. Clear the code directories first;
+# venv/ is deliberately kept so the install does not rebuild it every time.
+rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/frontend"
 cp -r "$REPO_DIR/backend" "$REPO_DIR/frontend" "$INSTALL_DIR/"
 
 echo "==> Creating Python virtualenv"
@@ -47,7 +51,10 @@ echo "==> Installing systemd service"
 cp "$REPO_DIR/deploy/proxmox-samba-gui.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now smbd
-systemctl enable --now proxmox-samba-gui
+# "enable --now" only starts a stopped unit, so re-running the installer would
+# leave the previous process serving the old code. Restart explicitly.
+systemctl enable proxmox-samba-gui
+systemctl restart proxmox-samba-gui
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 echo
