@@ -19,6 +19,11 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
   új mappa vagy **ZFS dataset** létrehozása közvetlenül a felületről
 - **Export**: `Nem` / `Igen` / `Igen (rejtett)` — a rejtett megosztás működik,
   de nem látszik a hálózat tallózásakor
+- **Hálózati böngészés Windows alatt**: a telepítő az `smbd` mellett az
+  `nmbd`-t (NetBIOS böngészés) és a `wsdd`-t (WS-Discovery) is elindítja,
+  hogy a gép megjelenjen a Windows Intéző "Hálózat" nézetében — enélkül a
+  megosztások `\\<IP>\<megosztás>` útvonallal kézzel elérhetők, csak a
+  böngészős lista nem mutatja a gépet
 - **Biztonsági módok** (az Unraid pontos megfelelői):
   - **Publikus** — bárki, jelszó nélkül, írás/olvasás
   - **Védett (Secure)** — vendégek olvashatnak, írásjog felhasználónként /
@@ -167,14 +172,17 @@ It reproduces Unraid's Export (`No` / `Yes` / `Yes (hidden)`) and Security
 (`Public` / `Secure` / `Private`) model with a per-user/per-group access
 matrix, adds group management, a per-share recycle bin (`vfs_recycle`),
 directory/ZFS-dataset creation from the browser dialog, PAM (root) login
-over HTTPS, and a bilingual (Hungarian/English) interface.
+over HTTPS, a bilingual (Hungarian/English) interface, and starts `nmbd`
+and `wsdd` alongside `smbd` so the host actually shows up in Windows'
+Network view instead of only being reachable via a direct UNC path.
 
 It also manages [mergerfs](https://github.com/trapexit/mergerfs) pools:
 mount existing partitions from the UI (fstab-based), format blank
-disks/partitions (ext4/xfs, no partitioning - a whole-disk mkfs) that
-carry no filesystem yet, with the Proxmox system disk always excluded
-from both lists, build pools from disks/folders with per-branch RW/RO/NC
-modes, create-policy
+disks/partitions (ext4/xfs) that carry no filesystem yet - a disk with no
+partition table gets a single GPT partition first, for compatibility if
+it's ever moved to another machine - with the Proxmox system disk always
+excluded from both lists, build pools from disks/folders with per-branch
+RW/RO/NC modes, create-policy
 presets plus a free-form advanced options field, per-branch usage bars,
 live reconfiguration of mounted pools via the mergerfs xattr control
 file, a "create share from this pool" shortcut, and deletion protection
