@@ -144,6 +144,7 @@ def parse_lsblk(output: str) -> List[dict]:
         mountpoint = dev.get("mountpoint")
         result.append({
             "path": dev.get("path") or "",
+            "type": dev.get("type"),
             "size": dev.get("size") or 0,
             "fstype": fstype,
             "uuid": dev.get("uuid") or "",
