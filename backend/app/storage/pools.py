@@ -95,6 +95,48 @@ def unmount_disk(mountpoint: str) -> None:
         run(["umount", mountpoint])
 
 
+FORMAT_TIMEOUT = 120
+BY_ID_PREFIXES = ("ata-", "scsi-", "nvme-")
+
+MKFS_COMMANDS = {
+    "ext4": lambda path: ["mkfs.ext4", "-F", path],
+    "xfs": lambda path: ["mkfs.xfs", "-f", path],
+}
+
+
+def format_device(path: str, fstype: str) -> None:
+    """Wipe any existing signatures and lay down a fresh filesystem.
+
+    Runs directly against the given block device path (whole disk or
+    partition) with no partition table involved - deliberate: this app only
+    supports single-filesystem-per-device data disks, not sub-partitioning.
+    """
+    run(["wipefs", "-a", path], timeout=FORMAT_TIMEOUT)
+    run(MKFS_COMMANDS[fstype](path), timeout=FORMAT_TIMEOUT)
+
+
+def _by_id_map() -> dict:
+    """Map a resolved device path to its stable /dev/disk/by-id symlinks.
+
+    Only ata-/scsi-/nvme- names are kept (physical-disk identifiers); the
+    wwn- and LVM/dm- entries in the same directory aren't useful for a
+    human picking a disk to format.
+    """
+    base = Path("/dev/disk/by-id")
+    result: dict = {}
+    if not base.is_dir():
+        return result
+    for entry in base.iterdir():
+        if not entry.name.startswith(BY_ID_PREFIXES):
+            continue
+        try:
+            target = str(entry.resolve())
+        except OSError:
+            continue
+        result.setdefault(target, []).append(entry.name)
+    return result
+
+
 def usage(path: str) -> Optional[dict]:
     try:
         st = os.statvfs(path)
@@ -150,7 +192,15 @@ def list_block_devices() -> List[dict]:
         ])
     except SystemOpError:
         return []
-    return poolconf.parse_lsblk(out)
+    devices = poolconf.parse_lsblk(out)
+    by_id = _by_id_map()
+    for dev in devices:
+        try:
+            resolved = str(Path(dev["path"]).resolve())
+        except OSError:
+            resolved = dev["path"]
+        dev["by_id"] = by_id.get(resolved, [])
+    return devices
 
 
 def pools_using_path(state: State, path: str) -> List[str]:

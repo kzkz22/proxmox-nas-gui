@@ -151,6 +151,12 @@ LSBLK = """{
      "serial": "S2", "label": null},
     {"path": "/dev/sdc1", "type": "part", "size": 100, "fstype": "swap",
      "uuid": "u-swap", "mountpoint": null, "model": null, "serial": null,
+     "label": null},
+    {"path": "/dev/sdd", "type": "disk", "size": 500107862016, "fstype": null,
+     "uuid": null, "mountpoint": null, "model": "Blank", "serial": "S4",
+     "label": null},
+    {"path": "/dev/sde1", "type": "part", "size": 990, "fstype": null,
+     "uuid": null, "mountpoint": null, "model": null, "serial": null,
      "label": null}
   ]
 }"""
@@ -161,11 +167,52 @@ def test_parse_lsblk():
     assert "/dev/sda" not in devices          # no fs, has children
     sda1 = devices["/dev/sda1"]
     assert sda1["mountable"] is True
+    assert sda1["formattable"] is False
     assert sda1["model"] == "WD Red"          # inherited from parent disk
     assert sda1["label"] == "data1"
     assert devices["/dev/sdb"]["mountable"] is False   # already mounted
+    assert devices["/dev/sdb"]["formattable"] is False
     assert devices["/dev/sdc1"]["mountable"] is False  # swap excluded
+    assert devices["/dev/sdc1"]["formattable"] is False  # has a filesystem
+    # A blank whole disk with no partition table is a format candidate.
+    assert devices["/dev/sdd"]["mountable"] is False
+    assert devices["/dev/sdd"]["formattable"] is True
+    # A blank partition (e.g. never formatted after creation) too.
+    assert devices["/dev/sde1"]["formattable"] is True
 
 
 def test_parse_lsblk_garbage():
     assert parse_lsblk("not json") == []
+
+
+PROXMOX_LSBLK = """{
+  "blockdevices": [
+    {"path": "/dev/sdc", "type": "disk", "size": 512110190592, "fstype": null,
+     "uuid": null, "mountpoint": null, "model": "Apacer", "serial": "S3",
+     "label": null, "children": [
+       {"path": "/dev/sdc1", "type": "part", "size": 1048576, "fstype": null,
+        "uuid": null, "mountpoint": null, "model": null, "serial": null,
+        "label": null},
+       {"path": "/dev/sdc2", "type": "part", "size": 1073741824, "fstype": "vfat",
+        "uuid": "boot-uuid", "mountpoint": "/boot/efi", "model": null,
+        "serial": null, "label": null},
+       {"path": "/dev/sdc3", "type": "part", "size": 500000000000,
+        "fstype": "LVM2_member", "uuid": "pv-uuid", "mountpoint": null,
+        "model": null, "serial": null, "label": null, "children": [
+          {"path": "/dev/mapper/pve-root", "type": "lvm", "size": 74000000000,
+           "fstype": "ext4", "uuid": "root-uuid", "mountpoint": "/",
+           "model": null, "serial": null, "label": null}
+        ]}
+     ]},
+    {"path": "/dev/sdd", "type": "disk", "size": 500107862016, "fstype": null,
+     "uuid": null, "mountpoint": null, "model": "Blank", "serial": "S4",
+     "label": null}
+  ]
+}"""
+
+
+def test_parse_lsblk_excludes_whole_system_disk():
+    devices = {d["path"]: d for d in parse_lsblk(PROXMOX_LSBLK)}
+    assert not any(p.startswith("/dev/sdc") for p in devices)
+    assert "/dev/mapper/pve-root" not in devices
+    assert devices["/dev/sdd"]["formattable"] is True

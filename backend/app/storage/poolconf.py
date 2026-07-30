@@ -107,6 +107,23 @@ def remove_line(fstab: str, kind: str, name: str) -> str:
     return ("\n".join(lines) + "\n") if lines else ""
 
 
+SYSTEM_MOUNTPOINTS = ("/", "/boot", "/boot/efi")
+
+
+def _contains_system_mount(dev: dict) -> bool:
+    """True if dev or any descendant is mounted on the running OS itself.
+
+    Used to exclude the whole Proxmox system disk (and every partition/LVM
+    volume on it) from the candidate list, not just the mounted leaf - so it
+    never shows up as either mountable or formattable, even indirectly via
+    an LVM volume group.
+    """
+    mp = dev.get("mountpoint")
+    if mp in SYSTEM_MOUNTPOINTS or (mp or "").startswith("/boot/"):
+        return True
+    return any(_contains_system_mount(child) for child in dev.get("children") or [])
+
+
 def parse_lsblk(output: str) -> List[dict]:
     """Flatten `lsblk -J -b` output into candidate/info entries."""
     try:
@@ -121,25 +138,30 @@ def parse_lsblk(output: str) -> List[dict]:
             walk(child, model)
         if dev.get("type") not in ("disk", "part"):
             return
-        fstype = dev.get("fstype")
-        if not fstype or dev.get("children"):
+        if dev.get("children"):
             return
+        fstype = dev.get("fstype") or ""
+        mountpoint = dev.get("mountpoint")
         result.append({
             "path": dev.get("path") or "",
             "size": dev.get("size") or 0,
             "fstype": fstype,
             "uuid": dev.get("uuid") or "",
-            "mountpoint": dev.get("mountpoint"),
+            "mountpoint": mountpoint,
             "model": model,
             "serial": (dev.get("serial") or "").strip(),
             "label": dev.get("label") or "",
             "mountable": (
-                dev.get("mountpoint") is None
+                bool(fstype)
+                and mountpoint is None
                 and fstype not in MOUNTABLE_EXCLUDE_FSTYPES
                 and bool(dev.get("uuid"))
             ),
+            "formattable": not fstype and mountpoint is None,
         })
 
     for dev in data.get("blockdevices", []):
+        if _contains_system_mount(dev):
+            continue
         walk(dev, "")
     return result
