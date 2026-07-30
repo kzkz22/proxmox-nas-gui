@@ -44,7 +44,13 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
   RW / RO (csak olvasás) / NC (nincs új fájl) móddal
 - **Diszkek felcsatolása** a felületről: a GUI listázza a fájlrendszerrel
   rendelkező, még nem csatolt partíciókat, és fstab-bejegyzéssel
-  a `/mnt/disks/<név>` alá csatolja őket (formázást szándékosan nem végez)
+  a `/mnt/disks/<név>` alá csatolja őket
+- **Üres lemezek/partíciók formázása**: a fájlrendszer nélküli eszközök
+  külön listában jelennek meg; a felhasználó ext4 vagy xfs fájlrendszert
+  választhat, a GUI `wipefs`+`mkfs`-sel formázza (partíciós tábla
+  létrehozása nélkül, közvetlenül az eszközre), majd azonnal fel is
+  csatolja. A Proxmox rendszerlemez (és minden rajta lévő partíció/LVM
+  kötet) sosem jelenik meg egyik listában sem
 - **Presetek + haladó mező**: create policy (mfs, epmfs, ff, pfrd, …) rövid
   magyarázatokkal, minimális szabad hely, `moveonenospc`, plusz szabad
   szöveges mező bármely további mergerfs opcióhoz
@@ -164,8 +170,11 @@ directory/ZFS-dataset creation from the browser dialog, PAM (root) login
 over HTTPS, and a bilingual (Hungarian/English) interface.
 
 It also manages [mergerfs](https://github.com/trapexit/mergerfs) pools:
-mount existing partitions from the UI (fstab-based, no formatting), build
-pools from disks/folders with per-branch RW/RO/NC modes, create-policy
+mount existing partitions from the UI (fstab-based), format blank
+disks/partitions (ext4/xfs, no partitioning - a whole-disk mkfs) that
+carry no filesystem yet, with the Proxmox system disk always excluded
+from both lists, build pools from disks/folders with per-branch RW/RO/NC
+modes, create-policy
 presets plus a free-form advanced options field, per-branch usage bars,
 live reconfiguration of mounted pools via the mergerfs xattr control
 file, a "create share from this pool" shortcut, and deletion protection

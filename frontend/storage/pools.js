@@ -57,18 +57,31 @@ async function renderDisksSection() {
   }).join("");
   const candidates = data.devices.filter((d) => d.mountable);
   const candRows = candidates.map((d) => `
-    <tr><td class="mono">${esc(d.path)}</td>
+    <tr><td class="mono">${esc(d.path)}${byIdLine(d)}</td>
       <td>${esc(d.model || "")}${d.label ? ` <span class="mono">(${esc(d.label)})</span>` : ""}</td>
       <td>${humanSize(d.size)}</td>
       <td class="mono">${esc(d.fstype)}</td>
       <td><button class="small primary" data-mount="${esc(d.uuid)}">${esc(t("disks.mountBtn"))}</button></td></tr>`).join("");
+  const blanks = data.devices.filter((d) => d.formattable);
+  const blankRows = blanks.map((d, i) => `
+    <tr><td class="mono">${esc(d.path)}${byIdLine(d)}</td>
+      <td>${esc(d.model || "")}</td>
+      <td>${humanSize(d.size)}</td>
+      <td><select data-fstype="${i}"><option value="ext4">ext4</option><option value="xfs">xfs</option></select></td>
+      <td><button class="small danger" data-format="${esc(d.path)}" data-format-idx="${i}"
+        data-size="${humanSize(d.size)}">${esc(t("disks.formatBtn"))}</button></td></tr>`).join("");
   box.innerHTML = `
     ${mountNames.length ? `<h2 style="margin-top:0">${esc(t("disks.managed"))}</h2>
       <table><tbody>${managedRows}</tbody></table>` : ""}
     <h2 ${mountNames.length ? "" : 'style="margin-top:0"'}>${esc(t("disks.available"))}</h2>
     ${candidates.length ? `<table><thead><tr><th>${esc(t("disks.device"))}</th><th></th>
         <th>${esc(t("disks.size"))}</th><th></th><th></th></tr></thead><tbody>${candRows}</tbody></table>`
-      : `<div class="matrix-note">${esc(t("disks.none"))}</div>`}`;
+      : `<div class="matrix-note">${esc(t("disks.none"))}</div>`}
+    <h2>${esc(t("disks.formattable"))}</h2>
+    ${blanks.length ? `<table><thead><tr><th>${esc(t("disks.device"))}</th><th></th>
+        <th>${esc(t("disks.size"))}</th><th>${esc(t("disks.formatFsLabel"))}</th><th></th></tr></thead>
+        <tbody>${blankRows}</tbody></table>`
+      : `<div class="matrix-note">${esc(t("disks.noneFormattable"))}</div>`}`;
   box.querySelectorAll("[data-mount]").forEach((btn) => btn.addEventListener("click", async () => {
     const mname = prompt(t("disks.namePrompt"));
     if (!mname) return;
@@ -85,6 +98,23 @@ async function renderDisksSection() {
     await refreshState();
     poolsList();
   }));
+  box.querySelectorAll("[data-format]").forEach((btn) => btn.addEventListener("click", async () => {
+    const path = btn.dataset.format;
+    const fstype = $(`[data-fstype="${btn.dataset.formatIdx}"]`).value;
+    if (!confirm(t("disks.formatConfirm", { path, size: btn.dataset.size, fstype }))) return;
+    const mname = prompt(t("disks.namePrompt"));
+    if (!mname) return;
+    await guard(() => api("/disks/format", { method: "POST", body: { path, fstype, name: mname } }));
+    toast(t("common.saved"), "ok");
+    await refreshState();
+    poolsList();
+  }));
+}
+
+function byIdLine(d) {
+  return d.by_id && d.by_id.length
+    ? `<div class="mono" style="font-size:0.85em;opacity:0.7">${esc(d.by_id[0])}</div>`
+    : "";
 }
 
 export function poolForm(name) {

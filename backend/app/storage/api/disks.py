@@ -17,6 +17,12 @@ class DiskMountRequest(BaseModel):
     name: str
 
 
+class DiskFormatRequest(BaseModel):
+    path: str
+    fstype: str
+    name: str
+
+
 @router.get("")
 def list_disks():
     st = state_store.load_state()
@@ -33,6 +39,18 @@ def list_disks():
             for name, dm in st.disk_mounts.items()
         },
     }
+
+
+def _persist_disk_mount(st, name: str, dm: DiskMount) -> None:
+    """Write the fstab entry, mount it, and record it in state - shared by
+    the mount and format-then-mount flows so there's one place that does it."""
+    fstab = poolconf.upsert_line(
+        pools.read_fstab(), "disk", name, poolconf.disk_fstab_line(name, dm),
+    )
+    pools.write_fstab(fstab)
+    pools.mount_disk(dm.mountpoint)
+    st.disk_mounts[name] = dm
+    state_store.save_state(st)
 
 
 @router.post("/mount")
@@ -54,14 +72,40 @@ def mount_disk(body: DiskMountRequest):
             uuid=body.uuid, fstype=device["fstype"],
             mountpoint=f"/mnt/disks/{body.name}",
         )
-        fstab = poolconf.upsert_line(
-            pools.read_fstab(), "disk", body.name,
-            poolconf.disk_fstab_line(body.name, dm),
+        _persist_disk_mount(st, body.name, dm)
+        return {"ok": True, "mountpoint": dm.mountpoint}
+
+
+@router.post("/format")
+def format_disk(body: DiskFormatRequest):
+    if not MOUNT_NAME_RE.match(body.name):
+        raise HTTPException(400, "invalid mount name")
+    if body.fstype not in pools.MKFS_COMMANDS:
+        raise HTTPException(400, "unsupported filesystem")
+    with state_store.lock:
+        st = state_store.load_state()
+        if body.name in st.disk_mounts:
+            raise HTTPException(409, "mount name already exists")
+        device = next(
+            (d for d in pools.list_block_devices() if d["path"] == body.path), None
         )
-        pools.write_fstab(fstab)
-        pools.mount_disk(dm.mountpoint)
-        st.disk_mounts[body.name] = dm
-        state_store.save_state(st)
+        if not device:
+            raise HTTPException(404, "no device at this path")
+        if not device["formattable"]:
+            raise HTTPException(
+                409, "device is not formattable (in use, has data, or is a system disk)"
+            )
+        pools.format_device(body.path, body.fstype)
+        formatted = next(
+            (d for d in pools.list_block_devices() if d["path"] == body.path), None
+        )
+        if not formatted or not formatted["uuid"]:
+            raise HTTPException(500, "format succeeded but the new UUID could not be determined")
+        dm = DiskMount(
+            uuid=formatted["uuid"], fstype=body.fstype,
+            mountpoint=f"/mnt/disks/{body.name}",
+        )
+        _persist_disk_mount(st, body.name, dm)
         return {"ok": True, "mountpoint": dm.mountpoint}
 
 

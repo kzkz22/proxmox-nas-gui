@@ -13,10 +13,10 @@ class SystemOpError(Exception):
     pass
 
 
-def run(cmd: List[str], input_text: str | None = None) -> str:
+def run(cmd: List[str], input_text: str | None = None, timeout: int = 30) -> str:
     try:
         proc = subprocess.run(
-            cmd, input=input_text, capture_output=True, text=True, timeout=30
+            cmd, input=input_text, capture_output=True, text=True, timeout=timeout
         )
     except FileNotFoundError:
         raise SystemOpError(f"command not found: {cmd[0]}")
