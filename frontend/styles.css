@@ -177,6 +177,13 @@ form.panel, .panel {
 .svc-dot.on { background: var(--ok); }
 .svc-dot.off { background: var(--danger); }
 
+.spinner {
+  display: inline-block; width: .8rem; height: .8rem; vertical-align: -.1em;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 .matrix-note { font-size: .85rem; color: var(--text-dim); margin-bottom: .6rem; }
 
 .usage-bar { background: var(--bg); border: 1px solid var(--border); border-radius: 99px; height: .8rem; overflow: hidden; min-width: 8rem; }

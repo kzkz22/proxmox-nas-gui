@@ -64,7 +64,8 @@ async function renderDisksSection() {
       <td><button class="small primary" data-mount="${esc(d.uuid)}">${esc(t("disks.mountBtn"))}</button></td></tr>`).join("");
   const blanks = data.devices.filter((d) => d.formattable);
   const blankRows = blanks.map((d, i) => `
-    <tr><td class="mono">${esc(d.path)}${byIdLine(d)}</td>
+    <tr><td class="mono">${esc(d.path)}${byIdLine(d)}
+        <div style="font-size:0.85em;opacity:0.7">${esc(t("disks.currentFsNone"))}</div></td>
       <td>${esc(d.model || "")}</td>
       <td>${humanSize(d.size)}</td>
       <td><select data-fstype="${i}"><option value="ext4">ext4</option><option value="xfs">xfs</option></select></td>
@@ -100,14 +101,26 @@ async function renderDisksSection() {
   }));
   box.querySelectorAll("[data-format]").forEach((btn) => btn.addEventListener("click", async () => {
     const path = btn.dataset.format;
-    const fstype = $(`[data-fstype="${btn.dataset.formatIdx}"]`).value;
+    const select = $(`[data-fstype="${btn.dataset.formatIdx}"]`);
+    const fstype = select.value;
     if (!confirm(t("disks.formatConfirm", { path, size: btn.dataset.size, fstype }))) return;
     const mname = prompt(t("disks.namePrompt"));
     if (!mname) return;
-    await guard(() => api("/disks/format", { method: "POST", body: { path, fstype, name: mname } }));
-    toast(t("common.saved"), "ok");
-    await refreshState();
-    poolsList();
+    toast(t("disks.formatStarted", { path }), "ok");
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    select.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> ${esc(t("disks.formatting"))}`;
+    try {
+      await guard(() => api("/disks/format", { method: "POST", body: { path, fstype, name: mname } }));
+      toast(t("common.saved"), "ok");
+      await refreshState();
+      poolsList();
+    } finally {
+      btn.disabled = false;
+      select.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
   }));
 }
 
