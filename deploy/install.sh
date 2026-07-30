@@ -15,10 +15,14 @@ fi
 
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 
-echo "==> Installing packages (samba, python3-venv, openssl, e2fsprogs, xfsprogs, fdisk, udev, wsdd)"
+echo "==> Installing packages (samba, python3-venv, openssl, e2fsprogs, xfsprogs, fdisk, udev, wsdd2)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g e2fsprogs xfsprogs fdisk udev wsdd
+# wsdd2, not wsdd: the original Python wsdd was dropped from Debian's
+# archive as of trixie (Debian 13 / Proxmox VE 9), only wsdd2 (a separate,
+# C-based implementation of the same WS-Discovery protocol) is packaged for
+# both bookworm and trixie.
+apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g e2fsprogs xfsprogs fdisk udev wsdd2
 
 echo "==> Copying application to ${INSTALL_DIR}"
 mkdir -p "$INSTALL_DIR"
@@ -51,12 +55,12 @@ echo "==> Installing systemd service"
 cp "$REPO_DIR/deploy/proxmox-nas-gui.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now smbd
-# nmbd (NetBIOS name/browsing) and wsdd (WS-Discovery) aren't required for
+# nmbd (NetBIOS name/browsing) and wsdd2 (WS-Discovery) aren't required for
 # the shares themselves to work over SMB, but without them the host never
 # shows up in Windows' Network view - only a direct \\host\share UNC path
 # works. Both together cover older and newer Windows versions.
 systemctl enable --now nmbd
-systemctl enable --now wsdd
+systemctl enable --now wsdd2
 # "enable --now" only starts a stopped unit, so re-running the installer would
 # leave the previous process serving the old code. Restart explicitly.
 systemctl enable proxmox-nas-gui
