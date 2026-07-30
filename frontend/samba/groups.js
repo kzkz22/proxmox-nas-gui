@@ -1,4 +1,5 @@
 import { api, guard, refreshState, S } from "../core/api.js";
+import { confirmDialog } from "../core/dialog.js";
 import { $, esc, reportResult, view } from "../core/dom.js";
 import { t } from "../core/i18n.js";
 import { accountShareMatrix, readShareMatrix } from "./matrix.js";
@@ -54,7 +55,7 @@ export function groupForm(name) {
   $("#cancel").onclick = () => (location.hash = "#/groups");
   if (!isNew) {
     $("#del").onclick = async () => {
-      if (!confirm(t("group.deleteConfirm", { name }))) return;
+      if (!(await confirmDialog(t("group.deleteConfirm", { name })))) return;
       const res = await guard(() => api(`/groups/${encodeURIComponent(name)}`, { method: "DELETE" }));
       reportResult(res);
       await refreshState();

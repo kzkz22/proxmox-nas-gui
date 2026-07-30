@@ -1,5 +1,6 @@
 import { api, guard, refreshState, S } from "../core/api.js";
 import { openBrowser } from "../core/browser.js";
+import { confirmDialog } from "../core/dialog.js";
 import { $, esc, humanSize, reportResult, toast, view } from "../core/dom.js";
 import { t } from "../core/i18n.js";
 import { takePrefillPath } from "../core/nav.js";
@@ -122,7 +123,7 @@ export function shareForm(name) {
           { files: info.files, size: humanSize(info.bytes) }))}
           <button type="button" class="small danger" id="recycle-empty">${esc(t("share.recycleEmptyBtn"))}</button>`;
         $("#recycle-empty").onclick = async () => {
-          if (!confirm(t("share.recycleConfirm", { name }))) return;
+          if (!(await confirmDialog(t("share.recycleConfirm", { name })))) return;
           await guard(() => api(`/shares/${encodeURIComponent(name)}/recycle/empty`, { method: "POST" }));
           toast(t("common.saved"), "ok");
           shareForm(name);
@@ -130,7 +131,7 @@ export function shareForm(name) {
       }).catch(() => {});
     }
     $("#del").onclick = async () => {
-      if (!confirm(t("share.deleteConfirm", { name }))) return;
+      if (!(await confirmDialog(t("share.deleteConfirm", { name })))) return;
       const res = await guard(() => api(`/shares/${encodeURIComponent(name)}`, { method: "DELETE" }));
       reportResult(res);
       await refreshState();

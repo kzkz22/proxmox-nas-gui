@@ -1,4 +1,5 @@
 import { api, guard, refreshState, S } from "../core/api.js";
+import { confirmDialog } from "../core/dialog.js";
 import { $, esc, reportResult, toast, view } from "../core/dom.js";
 import { t } from "../core/i18n.js";
 import { accountShareMatrix, readShareMatrix } from "./matrix.js";
@@ -50,7 +51,7 @@ export function userForm(name) {
   $("#cancel").onclick = () => (location.hash = "#/users");
   if (!isNew) {
     $("#del").onclick = async () => {
-      if (!confirm(t("user.deleteConfirm", { name }))) return;
+      if (!(await confirmDialog(t("user.deleteConfirm", { name })))) return;
       const res = await guard(() => api(`/users/${encodeURIComponent(name)}`, { method: "DELETE" }));
       reportResult(res);
       await refreshState();

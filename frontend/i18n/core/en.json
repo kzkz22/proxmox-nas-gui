@@ -13,6 +13,7 @@
   "common.description": "Description",
   "common.loading": "Loading…",
   "common.name": "Name",
+  "common.ok": "OK",
   "common.save": "Save",
   "common.saved": "Saved",
   "login.error": "Invalid username or password",

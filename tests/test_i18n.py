@@ -18,7 +18,7 @@ LANGS = ("en", "hu")
 
 # The full key set before the per-package split. The union of the split files
 # must still equal this, so the split provably lost nothing.
-EXPECTED_KEY_COUNT = 150
+EXPECTED_KEY_COUNT = 151
 
 
 def load(bundle: str, lang: str) -> dict:
