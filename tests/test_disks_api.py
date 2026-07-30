@@ -235,3 +235,23 @@ def test_partition_whole_disk_rejects_unexpected_partition_count(monkeypatch):
 
     with pytest.raises(pool_ops.SystemOpError):
         pool_ops.partition_whole_disk("/dev/sdd")
+
+
+def test_format_device_settles_udev_after_mkfs(monkeypatch):
+    """The API re-reads the device via list_block_devices() right after
+    format_device() returns to pick up the fresh UUID; without waiting for
+    udev to process the mkfs's change event first, that read can still see
+    no filesystem at all, even though the format itself succeeded."""
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return ""
+
+    monkeypatch.setattr(pool_ops, "run", fake_run)
+
+    pool_ops.format_device("/dev/sdd1", "ext4")
+
+    assert calls[0] == ["wipefs", "-a", "/dev/sdd1"]
+    assert calls[1] == ["mkfs.ext4", "-F", "/dev/sdd1"]
+    assert calls[2][:2] == ["udevadm", "settle"]
