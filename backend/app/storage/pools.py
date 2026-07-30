@@ -186,8 +186,15 @@ def pool_info(pool: Pool) -> dict:
 
 def list_block_devices() -> List[dict]:
     try:
+        # lsblk only nests dependents (partitions, LVM volumes) under their
+        # parent as "children" in JSON when the NAME column is requested or
+        # tree output is forced explicitly; with a custom -o list that omits
+        # NAME (as below, in favor of PATH) it silently falls back to a flat
+        # list instead. parse_lsblk relies on the nested tree to recognise a
+        # disk's own partitions and to walk down to the system disk's root
+        # mountpoint, so --tree=PATH is required, not optional.
         out = run([
-            "lsblk", "-J", "-b", "-o",
+            "lsblk", "-J", "-b", "--tree=PATH", "-o",
             "PATH,TYPE,SIZE,FSTYPE,UUID,MOUNTPOINT,MODEL,SERIAL,LABEL",
         ])
     except SystemOpError:
