@@ -15,10 +15,10 @@ fi
 
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 
-echo "==> Installing packages (samba, python3-venv, openssl, e2fsprogs, xfsprogs)"
+echo "==> Installing packages (samba, python3-venv, openssl, e2fsprogs, xfsprogs, fdisk, udev)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g e2fsprogs xfsprogs
+apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g e2fsprogs xfsprogs fdisk udev
 
 echo "==> Copying application to ${INSTALL_DIR}"
 mkdir -p "$INSTALL_DIR"

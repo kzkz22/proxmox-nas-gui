@@ -168,17 +168,21 @@ def test_parse_lsblk():
     sda1 = devices["/dev/sda1"]
     assert sda1["mountable"] is True
     assert sda1["formattable"] is False
+    assert sda1["type"] == "part"
     assert sda1["model"] == "WD Red"          # inherited from parent disk
     assert sda1["label"] == "data1"
     assert devices["/dev/sdb"]["mountable"] is False   # already mounted
     assert devices["/dev/sdb"]["formattable"] is False
+    assert devices["/dev/sdb"]["type"] == "disk"
     assert devices["/dev/sdc1"]["mountable"] is False  # swap excluded
     assert devices["/dev/sdc1"]["formattable"] is False  # has a filesystem
     # A blank whole disk with no partition table is a format candidate.
     assert devices["/dev/sdd"]["mountable"] is False
     assert devices["/dev/sdd"]["formattable"] is True
+    assert devices["/dev/sdd"]["type"] == "disk"
     # A blank partition (e.g. never formatted after creation) too.
     assert devices["/dev/sde1"]["formattable"] is True
+    assert devices["/dev/sde1"]["type"] == "part"
 
 
 def test_parse_lsblk_garbage():

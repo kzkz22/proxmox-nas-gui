@@ -105,14 +105,37 @@ MKFS_COMMANDS = {
 
 
 def format_device(path: str, fstype: str) -> None:
-    """Wipe any existing signatures and lay down a fresh filesystem.
-
-    Runs directly against the given block device path (whole disk or
-    partition) with no partition table involved - deliberate: this app only
-    supports single-filesystem-per-device data disks, not sub-partitioning.
-    """
+    """Wipe any existing signatures and lay down a fresh filesystem directly
+    on the given path - a partition, or a whole disk that's meant to hold the
+    filesystem itself (see partition_whole_disk for the disk case actually
+    used by the API, which creates a partition first and formats that)."""
     run(["wipefs", "-a", path], timeout=FORMAT_TIMEOUT)
     run(MKFS_COMMANDS[fstype](path), timeout=FORMAT_TIMEOUT)
+
+
+def partition_whole_disk(path: str) -> str:
+    """Create a GPT label with a single Linux-filesystem partition spanning
+    the whole disk, and return the new partition's device path.
+
+    A bare filesystem directly on the disk device (no partition table) works
+    fine for mergerfs, but confuses other tools/OSes if the disk is ever
+    moved elsewhere - so a blank whole disk always gets one full-size
+    partition first, matching how the existing sda1/sdb1-style disks in this
+    system are already laid out.
+    """
+    run(["wipefs", "-a", path], timeout=FORMAT_TIMEOUT)
+    run(["sfdisk", path], input_text="label: gpt\n,,L\n", timeout=FORMAT_TIMEOUT)
+    run(["udevadm", "settle", "--timeout=10"], timeout=15)
+    created = [
+        d for d in list_block_devices()
+        if d["path"] != path and d["path"].startswith(path)
+    ]
+    if len(created) != 1:
+        raise SystemOpError(
+            f"expected exactly one partition on {path} after partitioning, "
+            f"found {len(created)}"
+        )
+    return created[0]["path"]
 
 
 def _by_id_map() -> dict:

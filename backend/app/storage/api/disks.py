@@ -95,9 +95,16 @@ def format_disk(body: DiskFormatRequest):
             raise HTTPException(
                 409, "device is not formattable (in use, has data, or is a system disk)"
             )
-        pools.format_device(body.path, body.fstype)
+        target_path = body.path
+        if device["type"] == "disk":
+            # A blank whole disk gets a GPT partition first, so the disk
+            # stays usable with other tools/OSes if it's ever moved - only
+            # already-partitioned devices (type "part") get formatted in
+            # place.
+            target_path = pools.partition_whole_disk(body.path)
+        pools.format_device(target_path, body.fstype)
         formatted = next(
-            (d for d in pools.list_block_devices() if d["path"] == body.path), None
+            (d for d in pools.list_block_devices() if d["path"] == target_path), None
         )
         if not formatted or not formatted["uuid"]:
             raise HTTPException(500, "format succeeded but the new UUID could not be determined")
