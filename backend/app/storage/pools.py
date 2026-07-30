@@ -108,9 +108,18 @@ def format_device(path: str, fstype: str) -> None:
     """Wipe any existing signatures and lay down a fresh filesystem directly
     on the given path - a partition, or a whole disk that's meant to hold the
     filesystem itself (see partition_whole_disk for the disk case actually
-    used by the API, which creates a partition first and formats that)."""
+    used by the API, which creates a partition first and formats that).
+
+    Settles udev afterward for the same reason partition_whole_disk does:
+    the API immediately re-reads the device via list_block_devices() to
+    pick up the fresh UUID, and without waiting for udev to process the
+    mkfs's "change" event first, that read can still see no filesystem at
+    all - "format succeeded but the new UUID could not be determined",
+    even though the format itself worked.
+    """
     run(["wipefs", "-a", path], timeout=FORMAT_TIMEOUT)
     run(MKFS_COMMANDS[fstype](path), timeout=FORMAT_TIMEOUT)
+    run(["udevadm", "settle", "--timeout=10"], timeout=15)
 
 
 def partition_whole_disk(path: str) -> str:
