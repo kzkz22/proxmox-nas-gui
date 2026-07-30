@@ -114,3 +114,21 @@ def test_format_success_persists_mount_and_fstab(
     fstab = sandbox["PNAS_FSTAB"].read_text()
     assert "UUID=new-uuid /mnt/disks/d1 ext4" in fstab
     assert "# pnas:disk:d1" in fstab
+
+
+def test_list_block_devices_forces_tree_output(monkeypatch):
+    """Without --tree=PATH, lsblk silently returns a flat list (no nested
+    "children") because our -o column list omits NAME - which breaks both
+    the has-children parent/partition split and the system-disk exclusion
+    in parse_lsblk. Confirmed against a real Proxmox host: the same command
+    without this flag listed /dev/sdc (the system disk) as formattable."""
+    captured = []
+
+    def fake_run(cmd, **kwargs):
+        captured.append(cmd)
+        return '{"blockdevices": []}'
+
+    monkeypatch.setattr(pool_ops, "run", fake_run)
+    pool_ops.list_block_devices()
+
+    assert "--tree=PATH" in captured[0]
