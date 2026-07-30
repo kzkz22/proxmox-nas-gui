@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { promptDialog } from "./dialog.js";
 import { $, esc, toast } from "./dom.js";
 import { t } from "./i18n.js";
 
@@ -48,12 +49,17 @@ export function openBrowser(startPath, onSelect) {
     $("#br-cancel").onclick = () => (root.innerHTML = "");
     $("#br-select").onclick = () => { root.innerHTML = ""; onSelect(data.path); };
     const mk = async (dataset) => {
-      const name = prompt(t(dataset ? "browse.datasetPrompt" : "browse.namePrompt"));
-      if (!name) return;
-      try {
-        await api("/fs/mkdir", { method: "POST", body: { parent: data.path, name, dataset } });
-        render(data.path);
-      } catch (e) { toast(e.message, "err"); }
+      // promptDialog() renders into the same #modal-root as this browser,
+      // replacing it while open - render(data.path) below always puts the
+      // browser view back afterward, whether the prompt was confirmed,
+      // cancelled, or the mkdir call failed.
+      const name = await promptDialog(t(dataset ? "browse.datasetPrompt" : "browse.namePrompt"));
+      if (name) {
+        try {
+          await api("/fs/mkdir", { method: "POST", body: { parent: data.path, name, dataset } });
+        } catch (e) { toast(e.message, "err"); }
+      }
+      render(data.path);
     };
     $("#br-mkdir").onclick = () => mk(false);
     const mkds = $("#br-mkds");

@@ -1,5 +1,6 @@
 import { api, guard, refreshState, S } from "../core/api.js";
 import { openBrowser } from "../core/browser.js";
+import { confirmDialog, promptDialog } from "../core/dialog.js";
 import { $, esc, humanSize, reportResult, toast, view } from "../core/dom.js";
 import { t } from "../core/i18n.js";
 import { setPrefillPath } from "../core/nav.js";
@@ -84,7 +85,7 @@ async function renderDisksSection() {
         <tbody>${blankRows}</tbody></table>`
       : `<div class="matrix-note">${esc(t("disks.noneFormattable"))}</div>`}`;
   box.querySelectorAll("[data-mount]").forEach((btn) => btn.addEventListener("click", async () => {
-    const mname = prompt(t("disks.namePrompt"));
+    const mname = await promptDialog(t("disks.namePrompt"));
     if (!mname) return;
     await guard(() => api("/disks/mount", { method: "POST", body: { uuid: btn.dataset.mount, name: mname } }));
     toast(t("common.saved"), "ok");
@@ -93,7 +94,7 @@ async function renderDisksSection() {
   }));
   box.querySelectorAll("[data-unmount]").forEach((btn) => btn.addEventListener("click", async () => {
     const mname = btn.dataset.unmount;
-    if (!confirm(t("disks.unmountConfirm", { name: mname }))) return;
+    if (!(await confirmDialog(t("disks.unmountConfirm", { name: mname })))) return;
     await guard(() => api(`/disks/mount/${encodeURIComponent(mname)}`, { method: "DELETE" }));
     toast(t("common.saved"), "ok");
     await refreshState();
@@ -103,8 +104,8 @@ async function renderDisksSection() {
     const path = btn.dataset.format;
     const select = $(`[data-fstype="${btn.dataset.formatIdx}"]`);
     const fstype = select.value;
-    if (!confirm(t("disks.formatConfirm", { path, size: btn.dataset.size, fstype }))) return;
-    const mname = prompt(t("disks.namePrompt"));
+    if (!(await confirmDialog(t("disks.formatConfirm", { path, size: btn.dataset.size, fstype })))) return;
+    const mname = await promptDialog(t("disks.namePrompt"));
     if (!mname) return;
     toast(t("disks.formatStarted", { path }), "ok");
     const originalHtml = btn.innerHTML;
@@ -235,7 +236,7 @@ export function poolForm(name) {
       location.hash = "#/shares/new";
     };
     $("#del").onclick = async () => {
-      if (!confirm(t("pool.deleteConfirm", { name }))) return;
+      if (!(await confirmDialog(t("pool.deleteConfirm", { name })))) return;
       await guard(() => api(`/pools/${encodeURIComponent(name)}`, { method: "DELETE" }));
       toast(t("common.saved"), "ok");
       await refreshState();

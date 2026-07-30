@@ -13,6 +13,7 @@
   "common.description": "Leírás",
   "common.loading": "Betöltés…",
   "common.name": "Név",
+  "common.ok": "OK",
   "common.save": "Mentés",
   "common.saved": "Elmentve",
   "login.error": "Hibás felhasználónév vagy jelszó",
