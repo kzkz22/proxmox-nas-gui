@@ -20,7 +20,7 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
 - **Export**: `Nem` / `Igen` / `Igen (rejtett)` — a rejtett megosztás működik,
   de nem látszik a hálózat tallózásakor
 - **Hálózati böngészés Windows alatt**: a telepítő az `smbd` mellett az
-  `nmbd`-t (NetBIOS böngészés) és a `wsdd`-t (WS-Discovery) is elindítja,
+  `nmbd`-t (NetBIOS böngészés) és a `wsdd2`-t (WS-Discovery) is elindítja,
   hogy a gép megjelenjen a Windows Intéző "Hálózat" nézetében — enélkül a
   megosztások `\\<IP>\<megosztás>` útvonallal kézzel elérhetők, csak a
   böngészős lista nem mutatja a gépet
@@ -173,7 +173,7 @@ It reproduces Unraid's Export (`No` / `Yes` / `Yes (hidden)`) and Security
 matrix, adds group management, a per-share recycle bin (`vfs_recycle`),
 directory/ZFS-dataset creation from the browser dialog, PAM (root) login
 over HTTPS, a bilingual (Hungarian/English) interface, and starts `nmbd`
-and `wsdd` alongside `smbd` so the host actually shows up in Windows'
+and `wsdd2` alongside `smbd` so the host actually shows up in Windows'
 Network view instead of only being reachable via a direct UNC path.
 
 It also manages [mergerfs](https://github.com/trapexit/mergerfs) pools:
