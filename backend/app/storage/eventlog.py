@@ -20,7 +20,11 @@ from typing import Dict, List, Optional, Tuple
 SLEEP = "sleep"
 WAKE = "wake"
 SLEEP_FAILED = "sleep_failed"
-EVENTS = (SLEEP, WAKE, SLEEP_FAILED)
+# Temperature crossings are events too, so "when did this disk overheat" is
+# answered by the same searchable log as everything else.
+TEMP_HIGH = "temp_high"
+TEMP_NORMAL = "temp_normal"
+EVENTS = (SLEEP, WAKE, SLEEP_FAILED, TEMP_HIGH, TEMP_NORMAL)
 
 # Why it happened.
 TIMEOUT = "timeout"        # the idle timer expired and we spun it down
@@ -40,6 +44,14 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS events_disk_ts ON events(disk, ts);
+
+CREATE TABLE IF NOT EXISTS temperatures (
+  ts      INTEGER NOT NULL,
+  disk    TEXT    NOT NULL,
+  celsius INTEGER NOT NULL,
+  PRIMARY KEY (disk, ts)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS temperatures_ts ON temperatures(ts);
 """
 
 # Serialises this process's writers against each other. SQLite would handle
@@ -244,6 +256,174 @@ def prune(days: int) -> int:
         conn = connect()
         try:
             cursor = conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
+            conn.commit()
+            return cursor.rowcount
+        finally:
+            conn.close()
+
+
+# --- temperatures -----------------------------------------------------------
+#
+# A separate table rather than more event rows: these are samples on a fixed
+# cadence, not things that happened, and they are read as a series rather than
+# as a list. Keeping them apart means the event log stays small enough to page
+# through by hand, and lets the two have different retention.
+
+def record_temperature(disk: str, celsius: int, ts: Optional[int] = None) -> None:
+    """Store one reading. Only ever called with a real measurement.
+
+    INSERT OR REPLACE, so a monitor restart that samples twice within the same
+    second overwrites rather than failing on the primary key.
+    """
+    with _write_lock:
+        conn = connect()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO temperatures (ts, disk, celsius)"
+                " VALUES (?, ?, ?)",
+                (int(ts if ts is not None else time.time()), disk, int(celsius)),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def record_temperatures(readings: Dict[str, int], ts: Optional[int] = None) -> None:
+    """A whole sampling round in one transaction."""
+    if not readings:
+        return
+    at = int(ts if ts is not None else time.time())
+    with _write_lock:
+        conn = connect()
+        try:
+            conn.executemany(
+                "INSERT OR REPLACE INTO temperatures (ts, disk, celsius)"
+                " VALUES (?, ?, ?)",
+                [(at, disk, int(c)) for disk, c in readings.items()],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def latest_temperatures() -> Dict[str, dict]:
+    """The most recent reading per disk, with its timestamp.
+
+    The timestamp is the point: a sleeping disk keeps its last known
+    temperature, and "22 C, three hours ago" is far more use than a dash.
+    """
+    conn = connect()
+    try:
+        rows = conn.execute(
+            "SELECT disk, ts, celsius FROM temperatures t WHERE ts ="
+            " (SELECT MAX(ts) FROM temperatures WHERE disk = t.disk)"
+        ).fetchall()
+    finally:
+        conn.close()
+    return {r["disk"]: {"celsius": r["celsius"], "ts": r["ts"]} for r in rows}
+
+
+def temperature_series(
+    since: int, until: int, bucket: int, disks: Optional[List[str]] = None
+) -> Dict[str, List[list]]:
+    """{disk: [[timestamp, celsius], ...]}, averaged into buckets.
+
+    A year of five-minute samples is 105k points per disk; averaging in SQL
+    keeps that off the wire and out of the browser. The bucket timestamp is
+    its left edge, so points land on clock boundaries.
+
+    Gaps are preserved rather than filled. A stretch with no samples is a
+    stretch where the disk was asleep, and interpolating across it would draw
+    a temperature the disk never had.
+    """
+    where = ["ts >= ?", "ts <= ?"]
+    params: list = [int(since), int(until)]
+    if disks:
+        where.append(f"disk IN ({','.join('?' * len(disks))})")
+        params.extend(disks)
+    bucket = max(1, int(bucket))
+
+    conn = connect()
+    try:
+        rows = conn.execute(
+            f"SELECT disk, (ts / {bucket}) * {bucket} AS bucket_ts,"
+            f" AVG(celsius) AS avg_c FROM temperatures"
+            f" WHERE {' AND '.join(where)}"
+            f" GROUP BY disk, bucket_ts ORDER BY disk, bucket_ts",
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+
+    series: Dict[str, List[list]] = {}
+    for row in rows:
+        series.setdefault(row["disk"], []).append(
+            [int(row["bucket_ts"]), round(row["avg_c"], 1)]
+        )
+    return series
+
+
+def temperature_stats(
+    since: int, until: int, disks: Optional[List[str]] = None
+) -> Dict[str, dict]:
+    """Min, average, max and sample count per disk over a window."""
+    where = ["ts >= ?", "ts <= ?"]
+    params: list = [int(since), int(until)]
+    if disks:
+        where.append(f"disk IN ({','.join('?' * len(disks))})")
+        params.extend(disks)
+
+    conn = connect()
+    try:
+        rows = conn.execute(
+            "SELECT disk, MIN(celsius) AS lo, MAX(celsius) AS hi,"
+            " AVG(celsius) AS avg_c, COUNT(*) AS n FROM temperatures"
+            f" WHERE {' AND '.join(where)} GROUP BY disk ORDER BY disk",
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+    return {
+        r["disk"]: {"min": r["lo"], "max": r["hi"],
+                    "avg": round(r["avg_c"], 1), "samples": r["n"]}
+        for r in rows
+    }
+
+
+def temperature_rows(since: int, until: int, disks: Optional[List[str]] = None):
+    """Raw samples, oldest first - what the CSV export writes.
+
+    Deliberately not bucketed: an export exists so the data can be taken
+    somewhere else and analysed there, which the averaging would foreclose.
+    """
+    where = ["ts >= ?", "ts <= ?"]
+    params: list = [int(since), int(until)]
+    if disks:
+        where.append(f"disk IN ({','.join('?' * len(disks))})")
+        params.extend(disks)
+    conn = connect()
+    try:
+        return [
+            (r["ts"], r["disk"], r["celsius"])
+            for r in conn.execute(
+                f"SELECT ts, disk, celsius FROM temperatures"
+                f" WHERE {' AND '.join(where)} ORDER BY ts, disk",
+                params,
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+
+
+def prune_temperatures(days: int) -> int:
+    """Drop readings older than `days`. Separate from the event retention:
+    a year of temperatures is a few megabytes and makes summer comparable
+    with winter, while a year of event rows is just a long list."""
+    cutoff = int(time.time()) - days * 86400
+    with _write_lock:
+        conn = connect()
+        try:
+            cursor = conn.execute("DELETE FROM temperatures WHERE ts < ?", (cutoff,))
             conn.commit()
             return cursor.rowcount
         finally:

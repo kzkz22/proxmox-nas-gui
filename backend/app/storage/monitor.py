@@ -20,7 +20,8 @@ import time
 from typing import Dict, Optional
 
 from ..core import state as state_store
-from . import disksleep, eventlog, sleepconf
+from .models import TEMP_SSD_OFFSET
+from . import disksleep, disktemp, eventlog, sleepconf
 
 log = logging.getLogger(__name__)
 
@@ -31,10 +32,14 @@ RETRY_AFTER = 3600
 PRUNE_INTERVAL = 86400
 
 _task: Optional[asyncio.Task] = None
+_last_temp = 0.0
 # by-id name -> what the last tick saw. The monitor's whole memory; it is
 # rebuilt from scratch on restart, which is why the first tick after startup
 # records states without logging transitions.
 _tracked: Dict[str, dict] = {}
+# by-id -> whether the disk was over the critical threshold at the last
+# sample, so a crossing is logged once rather than every five minutes.
+_hot: Dict[str, bool] = {}
 _last_prune = 0.0
 
 
@@ -78,7 +83,7 @@ def note_manual_sleep(by_id: str, method: Optional[str]) -> None:
 def tick() -> None:
     """One pass over every managed disk. Synchronous on purpose - it shells
     out and touches SQLite, so it is run in a worker thread."""
-    global _last_prune
+    global _last_prune, _last_temp
 
     state = state_store.load_state()
     settings = state.disk_sleep_settings
@@ -141,10 +146,73 @@ def tick() -> None:
     for stale in set(_tracked) - set(disks):
         _tracked.pop(stale, None)
 
+    if settings.temp_enabled and now - _last_temp >= settings.temp_interval_seconds:
+        _last_temp = now
+        with contextlib.suppress(Exception):
+            _sample_temperatures(settings)
+
     if now - _last_prune > PRUNE_INTERVAL:
         _last_prune = now
         with contextlib.suppress(Exception):
             eventlog.prune(settings.retention_days)
+        with contextlib.suppress(Exception):
+            eventlog.prune_temperatures(settings.temp_retention_days)
+
+
+def _awake(disk: dict) -> bool:
+    """Whether this tick already saw the disk spinning.
+
+    The whole safety of temperature sampling rests here. A SMART read wakes a
+    sleeping drive, so the answer comes from the power state this tick already
+    measured with hdparm -C, never from asking the drive again. A disk the
+    monitor does not track - the system disk - is awake by definition: it is
+    running the operating system.
+    """
+    entry = _tracked.get(disk["by_id"])
+    if entry is None:
+        return True
+    return not sleepconf.is_asleep(entry["state"])
+
+
+def _sample_temperatures(settings) -> None:
+    disks = disktemp.list_temp_disks()
+    readings = disktemp.sample(disks, _awake)
+    if not readings:
+        return
+    eventlog.record_temperatures(readings)
+
+    thresholds = {d["by_id"]: _thresholds(d, settings) for d in disks}
+    for by_id, celsius in readings.items():
+        warn, crit = thresholds.get(by_id, (settings.temp_warn_celsius,
+                                            settings.temp_crit_celsius))
+        entry = _tracked.get(by_id)
+        if entry is not None:
+            entry["temp"] = celsius
+            entry["temp_at"] = time.time()
+        _log_temperature_crossing(by_id, celsius, crit)
+
+
+def _thresholds(disk: dict, settings) -> tuple:
+    """A device that does not spin runs hotter as a matter of course, so the
+    one pair of thresholds is shifted rather than duplicated for those."""
+    offset = 0 if disk.get("rotational", True) else TEMP_SSD_OFFSET
+    return settings.temp_warn_celsius + offset, settings.temp_crit_celsius + offset
+
+
+def _log_temperature_crossing(by_id: str, celsius: int, crit: int) -> None:
+    """One event when a disk goes over the critical threshold, one when it
+    comes back - not a row every five minutes while it stays hot."""
+    was_hot = _hot.get(by_id, False)
+    is_hot = celsius >= crit
+    if is_hot == was_hot:
+        return
+    _hot[by_id] = is_hot
+    eventlog.record(
+        by_id,
+        eventlog.TEMP_HIGH if is_hot else eventlog.TEMP_NORMAL,
+        eventlog.EXTERNAL,
+        detail=f"{celsius} C",
+    )
 
 
 def _log_transition(by_id: str, previous: dict, entry: dict, counters) -> None:

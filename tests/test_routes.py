@@ -59,6 +59,8 @@ EXPECTED_ROUTES = {
     ("PUT", "/api/sleep/settings"),
     ("GET", "/api/sleep/events"),
     ("GET", "/api/sleep/io"),
+    ("GET", "/api/sleep/temps"),
+    ("GET", "/api/sleep/temps/history"),
     ("POST", "/api/sleep/fix"),
     ("POST", "/api/sleep/takeover"),
 }

@@ -70,7 +70,7 @@ def _read(path: Path) -> str:
 
 # --- device enumeration -----------------------------------------------------
 
-def _lsblk_disks() -> List[dict]:
+def lsblk_disks() -> List[dict]:
     try:
         # --tree=PATH for the same reason list_block_devices needs it: with a
         # custom -o list that omits NAME, lsblk silently flattens the output,
@@ -108,7 +108,7 @@ def zpool_devices(pool: str) -> List[str]:
     return sleepconf.parse_zpool_devices(out)
 
 
-def _resolve(path: str) -> str:
+def resolve_device(path: str) -> str:
     try:
         return str(Path(path).resolve())
     except OSError:
@@ -122,7 +122,7 @@ def _owning_disk(disk_paths: List[str], device: str) -> Optional[str]:
     the kernel naming guarantees (/dev/sda1 under /dev/sda, /dev/nvme0n1p1
     under /dev/nvme0n1) and avoids another round of sysfs walking.
     """
-    resolved = _resolve(device)
+    resolved = resolve_device(device)
     for disk in sorted(disk_paths, key=len, reverse=True):
         if resolved == disk or resolved.startswith(disk):
             return disk
@@ -141,7 +141,7 @@ def list_sleep_disks() -> List[dict]:
     SSD achieves nothing, and silently dropping it would read as the GUI
     failing to see the disk.
     """
-    disks = _lsblk_disks()
+    disks = lsblk_disks()
     paths = [d["path"] for d in disks if d["path"]]
 
     system_paths = {d["path"] for d in disks if d["system"]}
@@ -157,7 +157,7 @@ def list_sleep_disks() -> List[dict]:
     for disk in disks:
         if disk["path"] in system_paths:
             continue
-        names = sorted(by_id.get(_resolve(disk["path"]), []))
+        names = sorted(by_id.get(resolve_device(disk["path"]), []))
         if not names:
             # No by-id name means no stable key, and /dev/sdX is not one:
             # a policy stored against it could land on a different disk

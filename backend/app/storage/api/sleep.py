@@ -1,19 +1,30 @@
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from ...core import state as state_store
 from ...core.auth import current_user
 from ...core.proc import SystemOpError
-from .. import disksleep, eventlog, monitor, sleepconf
-from ..models import IDLE_CHOICES, DiskSleepPolicy, DiskSleepSettings
+from .. import disksleep, disktemp, eventlog, monitor, sleepconf
+from ..models import (
+    IDLE_CHOICES,
+    TEMP_SSD_OFFSET,
+    DiskSleepPolicy,
+    DiskSleepSettings,
+)
 
 router = APIRouter(prefix="/sleep", tags=["sleep"])
 
 BY_ID_RE = sleepconf.BY_ID_RE
 DAY = 86400
+# The history windows the temperature tab offers, and how many points each is
+# reduced to. A year of five-minute samples is 105k points per disk; nobody
+# can see that many and no browser should be asked to draw them.
+TEMP_WINDOWS = {"24h": DAY, "7d": 7 * DAY, "30d": 30 * DAY, "1y": 365 * DAY}
+TEMP_TARGET_POINTS = 500
 # How stale the monitor's view may be before the endpoint asks the drive
 # itself. Two ticks of the default interval: one missed tick is normal, two
 # means the loop is not running (disabled, or still starting up).
@@ -65,6 +76,7 @@ def list_sleep():
 
     managed = [d for d in disks if d["rotational"]]
     described = disksleep.describe(st, managed)
+    latest_temps = eventlog.latest_temperatures()
 
     timelines = {
         d["by_id"]: eventlog.timeline(d["by_id"], since, int(now))
@@ -100,6 +112,7 @@ def list_sleep():
             ),
             "timeline": timelines[disk["by_id"]],
             "warnings": info.get("warnings", []),
+            "temperature": _temp_view(disk, latest_temps, st.disk_sleep_settings),
             **live,
         })
 
@@ -112,6 +125,7 @@ def list_sleep():
         ],
         "settings": st.disk_sleep_settings.model_dump(),
         "idle_choices": list(IDLE_CHOICES),
+        "ssd_offset": TEMP_SSD_OFFSET,
         "hd_idle_running": disksleep.hd_idle_running(),
         "summary": {
             **eventlog.summary(since, int(now), timelines),
@@ -145,6 +159,88 @@ def disk_io():
             for by_id, name in disksleep.disk_names().items()
             if (io := counters.get(name)) is not None
         },
+    }
+
+
+def _temp_view(disk: dict, latest: dict, settings) -> dict:
+    """One disk's temperature for the cards: value, age and severity.
+
+    Served from the stored readings rather than probed, so opening the page
+    never issues a SMART command. A sleeping disk keeps its last known value
+    with the age attached - "22 C, three hours ago" is far more use than a
+    dash, and the age is what stops it being mistaken for a live reading.
+    """
+    reading = latest.get(disk["by_id"])
+    if not reading:
+        return {"celsius": None, "temp_at": None, "level": None}
+    offset = 0 if disk.get("rotational", True) else TEMP_SSD_OFFSET
+    return {
+        "celsius": reading["celsius"],
+        "temp_at": reading["ts"],
+        "level": sleepconf.temperature_level(
+            reading["celsius"],
+            settings.temp_warn_celsius + offset,
+            settings.temp_crit_celsius + offset,
+        ),
+    }
+
+
+@router.get("/temps")
+def list_temps():
+    """Current temperature per disk, including the system disk.
+
+    The system disk appears here and nowhere else on the page: it never stops
+    spinning, so it is usually the hottest drive in the box, and until now the
+    interface never mentioned it. It gets a reading and no controls.
+    """
+    st = state_store.load_state()
+    settings = st.disk_sleep_settings
+    latest = eventlog.latest_temperatures()
+    return {
+        "disks": [
+            {"by_id": d["by_id"], "model": d["model"], "path": d["path"],
+             "system": d.get("system", False), "rotational": d["rotational"],
+             **_temp_view(d, latest, settings)}
+            for d in disktemp.list_temp_disks()
+        ],
+        "warn_celsius": settings.temp_warn_celsius,
+        "crit_celsius": settings.temp_crit_celsius,
+        "ssd_offset": TEMP_SSD_OFFSET,
+    }
+
+
+@router.get("/temps/history")
+def temp_history(
+    window: str = Query("24h"),
+    disk: Optional[str] = None,
+    fmt: str = Query("json", alias="format"),
+):
+    if window not in TEMP_WINDOWS:
+        raise HTTPException(400, "unknown window")
+    until = int(time.time())
+    since = until - TEMP_WINDOWS[window]
+    disks = [disk] if disk else None
+
+    if fmt == "csv":
+        rows = eventlog.temperature_rows(since, until, disks)
+        body = "timestamp,iso,disk,celsius\n" + "".join(
+            f"{ts},{datetime.fromtimestamp(ts, timezone.utc).isoformat()},{d},{c}\n"
+            for ts, d, c in rows
+        )
+        return Response(
+            content=body, media_type="text/csv",
+            headers={"content-disposition":
+                     f'attachment; filename="disk-temperatures-{window}.csv"'},
+        )
+
+    bucket = sleepconf.bucket_seconds(TEMP_WINDOWS[window], TEMP_TARGET_POINTS)
+    st = state_store.load_state()
+    return {
+        "window": window, "since": since, "until": until, "bucket": bucket,
+        "series": eventlog.temperature_series(since, until, bucket, disks),
+        "stats": eventlog.temperature_stats(since, until, disks),
+        "warn_celsius": st.disk_sleep_settings.temp_warn_celsius,
+        "crit_celsius": st.disk_sleep_settings.temp_crit_celsius,
     }
 
 

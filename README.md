@@ -139,6 +139,11 @@ mindhármat kiváltja.
   skálán. Így ránézésre elkülönül a löketszerű forgalom (mentés, scrub) az
   egyenletestől, és rögtön látszik az is, ha egy „alvó" lemezre folyamatosan
   írás érkezik
+- **Hőmérséklet**: a pörgő lemezeknél az aktuális érték a kártyán, a küszöbök
+  szerint színezve; alvó lemeznél az utolsó ismert érték a korával együtt.
+  A figyelő 5 percenként mintát vesz és adatbázisba írja, külön
+  **Hőmérséklet** fülön grafikonnal (24 óra / 7 nap / 30 nap / 1 év),
+  lemezenkénti min–átlag–max táblázattal és CSV exporttal
 - **Figyelmeztetések**: a GUI megnézi, mi tarthatja ébren az adott lemezt, és
   ahol biztonságos, egy gombbal ki is javítja
 
@@ -164,6 +169,28 @@ Ha a `hd-idle` fut, az oldal tetején figyelmeztetés jelenik meg: amíg fut, ő
 is altat, és a napló hiányos marad. Az „Átvétel" gomb leállítja és letiltja,
 a `HD_IDLE_OPTS` sorból pedig átveszi a lemezenkénti időzítéseket (a legközelebbi
 felkínált értékre kerekítve, amiről jelzést is ad).
+
+#### Hőmérséklet mérése alvó lemez felébresztése nélkül
+
+Ez az egyetlen mérés, ami nem ingyenes: a tétlenség a `/proc/diskstats`-ból,
+az energiaállapot a `hdparm -C`-ből jön, de a hőmérséklet valódi
+SMART-lekérdezés — pontosan az, amiről a lentebbi `smartd`-figyelmeztetés azt
+írja, hogy felpörgeti a lemezt. Ezért két, egymástól független védelem van:
+
+1. **A figyelő csak ébren lévő lemezt kérdez le.** Az energiaállapotot
+   ugyanabban a körben már megmérte `hdparm -C`-vel; alvó lemezre a parancsot
+   **el sem indítja**.
+2. **`smartctl -n standby`** a hálószem, ha a lemez a két lépés között aludt
+   el: ilyenkor a smartctl 2-es kóddal kilép anélkül, hogy felpörgetné.
+
+Az adatbázisba **csak valódi mérés** kerül. Egy alvó lemez smartctl-válaszában
+a hőmérséklet gyakran `0` — ez „nincs adat", nem fagypont, különben minden
+átlagot lehúzna. Ennek szép mellékhatása: **a grafikonon a lyukak maguk az
+alvási időszakok**, külön jelölés nélkül látszik, mennyit hűt az altatás.
+
+A rendszerlemez a Hőmérséklet fülön megjelenik (és csak ott): folyamatosan
+pörög, tehát tipikusan az a legmelegebb a gépben. Vezérlőt nem kap, és
+minden olyan listából kimarad, ami műveletet végezhetne egy lemezen.
 
 #### Mi tartja ébren a lemezt?
 
@@ -191,6 +218,8 @@ felpörgést — a mergerfs proxy, nem gyorsítótár, és egy `readdir` definí
 szerint minden branch-et megérint. A cache-opciók csak az *ismétlődő*
 metaadat-kéréseket szűrik. A valódi tanács ezért az, hogy indexelőt,
 médiaszervert vagy mentést a mögöttes útvonalra irányíts, ne a poolra.
+
+![Hőmérséklet-előzmény](docs/temps.png)
 
 | Mi tartja ébren? | Állapotnapló |
 |---|---|
@@ -287,6 +316,10 @@ egyszer figyelmeztetni fog.)
 | `PNAS_UPDATEDB_CONF` | `/etc/updatedb.conf` | Az updatedb konfig (csak olvassuk) |
 | `PNAS_CRON_DIR` | `/etc/cron.d` | Cron-bejegyzések könyvtára (csak olvassuk) |
 | `PNAS_DISABLE_MONITOR` | – | `1` esetén az alvásfigyelő el sem indul (a tesztek ezt használják) |
+
+A hőmérséklet-mérések ugyanabba az adatbázisba kerülnek, mint az
+állapotnapló (`PNAS_LOG_DB`), külön táblába és külön megőrzési idővel
+(alapból 1 év, szemben a napló 90 napjával).
 
 ## Fejlesztés
 

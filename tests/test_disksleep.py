@@ -144,7 +144,7 @@ def enumerated(monkeypatch):
     monkeypatch.setattr(disksleep.pools, "by_id_map", lambda: {
         "/dev/sda": [WD], "/dev/sdb": [TOSHIBA], "/dev/sdc": ["ata-SYSTEM_DISK"],
     })
-    monkeypatch.setattr(disksleep, "_resolve", lambda p: p)
+    monkeypatch.setattr(disksleep, "resolve_device", lambda p: p)
 
 
 def test_the_zfs_root_disk_never_appears(enumerated):
