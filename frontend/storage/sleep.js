@@ -15,6 +15,10 @@ const LOG_PAGE = 25;
  *  frequent: the endpoint only reads /proc/diskstats, which is kernel memory
  *  and issues no I/O, so polling it can never wake a sleeping disk. */
 const IO_INTERVAL = 2000;
+/** Samples kept per disk for the sparkline - two minutes at the poll rate.
+ *  Long enough to tell a burst from a steady stream, short enough that the
+ *  shape still describes what the disk is doing now. */
+const IO_SAMPLES = 60;
 
 /** Filters of the log tab, kept across re-renders so paging does not reset
  *  what the user is looking at. */
@@ -214,11 +218,16 @@ function wireDisks() {
 /** Previous counter sample, so a rate can be derived from two of them. */
 let ioPrevious = null;
 let ioTimer = null;
+/** by-id -> [[read, write], ...], newest last. */
+const ioHistory = new Map();
 
 function stopIo() {
   if (ioTimer) clearInterval(ioTimer);
   ioTimer = null;
   ioPrevious = null;
+  // The history goes too. Keeping it across a pause would draw the gap as a
+  // continuous line, which is a lie about what the disk was doing.
+  ioHistory.clear();
 }
 
 function startIo() {
@@ -264,6 +273,7 @@ async function pollIo() {
     if (!now || !before) { el.textContent = ""; return; }
     const read = Math.max(0, now.read_bytes - before.read_bytes) / seconds;
     const write = Math.max(0, now.write_bytes - before.write_bytes) / seconds;
+    const history = remember(el.dataset.io, read, write);
     // A disk with no traffic at all says nothing rather than blinking zeroes
     // at the user - the state badge above it already says "asleep".
     if (read < 1 && write < 1 && el.dataset.ioAsleep === "1") {
@@ -271,9 +281,70 @@ async function pollIo() {
       return;
     }
     el.innerHTML =
-      `<span class="io-r" title="${esc(t("sleep.ioRead"))}">↓ ${esc(rate(read))}</span>` +
-      `<span class="io-w" title="${esc(t("sleep.ioWrite"))}">↑ ${esc(rate(write))}</span>`;
+      sparkline(history) +
+      `<span class="io-n"><i class="io-r">↓</i> ${esc(rate(read))}</span>` +
+      `<span class="io-n"><i class="io-w">↑</i> ${esc(rate(write))}</span>`;
   });
+}
+
+function remember(byId, read, write) {
+  const history = ioHistory.get(byId) || [];
+  history.push([read, write]);
+  if (history.length > IO_SAMPLES) history.splice(0, history.length - IO_SAMPLES);
+  ioHistory.set(byId, history);
+  return history;
+}
+
+/** A mirrored sparkline: reads above the centre line, writes below.
+ *
+ *  Mirroring rather than two overlaid lines because at this size overlapping
+ *  fills would hide each other, and the read/write balance is most of what
+ *  the shape is for - a steady trickle of writes looks nothing like the burst
+ *  of a backup or a scrub.
+ *
+ *  Both halves share one scale, deliberately. Giving each series its own
+ *  maximum would make a 900 B/s write look the same size as a 48 MiB/s read,
+ *  which is the dual-axis mistake drawn small.
+ *
+ *  The scale is the window's own peak, so the shape always fills the box; the
+ *  numbers beside it and the peak in the tooltip carry the magnitude, which
+ *  is the division of labour a sparkline is for.
+ */
+function sparkline(history) {
+  if (history.length < 2) return "";
+  const peakRead = Math.max(...history.map((s) => s[0]));
+  const peakWrite = Math.max(...history.map((s) => s[1]));
+  const peak = Math.max(peakRead, peakWrite);
+  if (peak < 1) return "";
+
+  const W = 78, H = 26, mid = H / 2, amp = mid - 1.5;
+  // Anchored to the right edge, so a partly filled buffer grows leftwards and
+  // the newest sample is always in the same place.
+  const step = W / (IO_SAMPLES - 1);
+  const x = (i) => W - (history.length - 1 - i) * step;
+  const area = (pick, sign) => {
+    const points = history
+      .map((s, i) => `${x(i).toFixed(1)},${(mid + sign * (pick(s) / peak) * amp).toFixed(1)}`)
+      .join(" L");
+    return `M${x(0).toFixed(1)},${mid} L${points} L${x(history.length - 1).toFixed(1)},${mid}Z`;
+  };
+  const last = history[history.length - 1];
+  const tip = mid - (last[0] / peak) * amp;
+
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"
+      role="img" aria-label="${esc(t("sleep.sparkAria", {
+        window: Math.round((IO_SAMPLES * IO_INTERVAL) / 1000 / 60),
+        read: rate(peakRead), write: rate(peakWrite),
+      }))}">
+    <title>${esc(t("sleep.sparkTitle", {
+      window: Math.round((IO_SAMPLES * IO_INTERVAL) / 1000 / 60),
+      read: rate(peakRead), write: rate(peakWrite),
+    }))}</title>
+    <path class="spark-r" d="${area((s) => s[0], -1)}"/>
+    <path class="spark-w" d="${area((s) => s[1], 1)}"/>
+    <line class="spark-mid" x1="0" y1="${mid}" x2="${W}" y2="${mid}"/>
+    <circle class="spark-tip" cx="${W}" cy="${tip.toFixed(1)}" r="1.8"/>
+  </svg>`;
 }
 
 /** Reuses humanSize so the units match the rest of the application (KiB,

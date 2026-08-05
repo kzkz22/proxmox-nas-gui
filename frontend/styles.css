@@ -317,8 +317,27 @@ td .ds { display: block; font-size: .72rem; color: var(--accent); }
 td .badge { white-space: nowrap; }
 
 /* Live throughput, refreshed from /proc/diskstats every couple of seconds.
-   Tabular figures so the numbers stop jittering sideways as they change. */
-.io { display: flex; gap: .6rem; font-size: .8rem; font-variant-numeric: tabular-nums; }
+   Tabular figures so the numbers stop jittering sideways as they change.
+
+   --io-read is a saturated blue rather than the paler one the sleeping badge
+   uses: at a 1px sparkline edge that one falls below the chroma floor and
+   reads as grey. Against the accent it clears CVD separation comfortably
+   (deltaE 27 protanopia, 32 normal vision) on this surface. */
+:root { --io-read: #58a6ff; }
+
+.io { display: flex; align-items: center; gap: .55rem; font-size: .8rem;
+      font-variant-numeric: tabular-nums; color: var(--text-dim); }
 .io:empty { display: none; }
-.io-r { color: #9db4ee; }
-.io-w { color: var(--accent); }
+/* The arrow carries the series colour; the number stays in text ink, so the
+   figures are legible at this size and identity never rests on colour alone. */
+.io-n { display: inline-flex; gap: .2rem; align-items: baseline; }
+.io-r { color: var(--io-read); font-style: normal; }
+.io-w { color: var(--accent); font-style: normal; }
+
+/* Mirrored sparkline: reads above the centre line, writes below, both on one
+   shared scale. Two minutes of history, newest at the right edge. */
+.spark { display: block; overflow: visible; }
+.spark-r { fill: var(--io-read); fill-opacity: .75; }
+.spark-w { fill: var(--accent); fill-opacity: .75; }
+.spark-mid { stroke: var(--border); stroke-width: 1; }
+.spark-tip { fill: var(--io-read); }

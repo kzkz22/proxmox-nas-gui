@@ -171,6 +171,8 @@
   "sleep.settingRetentionHint": "Older events are removed daily. The database lives on the system disk, so it never wakes a data disk.",
   "sleep.settingsTitle": "Settings",
   "sleep.since": "for {time}",
+  "sleep.sparkAria": "Read and write throughput over the last {window} minutes. Peak: {read} read, {write} write.",
+  "sleep.sparkTitle": "Last {window} min — peak: ↓ {read}, ↑ {write}",
   "sleep.spinDownConfirm": "{disk} will be put to sleep now. The next request to it will spin it back up, which takes a few seconds. Continue?",
   "sleep.spinDownNow": "Sleep now",
   "sleep.spinningDown": "Spinning down…",

@@ -134,7 +134,11 @@ mindhármat kiváltja.
   frissítve. A számlálók a `/proc/diskstats`-ból jönnek (kernelmemória, nulla
   lemez-I/O), a sebességet a böngésző számolja két minta különbségéből — így
   a lekérdezés maga sosem ébreszt fel semmit, és egy háttérbe tett fül sem
-  torzítja az értéket
+  torzítja az értéket. A szám mellett **tükrözött sparkline** mutatja az
+  utolsó 2 percet — az olvasás a középvonal fölött, az írás alatta, közös
+  skálán. Így ránézésre elkülönül a löketszerű forgalom (mentés, scrub) az
+  egyenletestől, és rögtön látszik az is, ha egy „alvó" lemezre folyamatosan
+  írás érkezik
 - **Figyelmeztetések**: a GUI megnézi, mi tarthatja ébren az adott lemezt, és
   ahol biztonságos, egy gombbal ki is javítja
 
