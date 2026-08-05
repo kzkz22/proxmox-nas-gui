@@ -58,6 +58,7 @@ EXPECTED_ROUTES = {
     ("POST", "/api/sleep/spindown/{by_id}"),
     ("PUT", "/api/sleep/settings"),
     ("GET", "/api/sleep/events"),
+    ("GET", "/api/sleep/io"),
     ("POST", "/api/sleep/fix"),
     ("POST", "/api/sleep/takeover"),
 }

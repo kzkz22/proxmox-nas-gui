@@ -143,6 +143,8 @@
   "sleep.idle.900": "15 minutes",
   "sleep.idleLabel": "Idle time",
   "sleep.ioDetail": "{reads} reads, {writes} writes",
+  "sleep.ioRead": "Read",
+  "sleep.ioWrite": "Write",
   "sleep.logEmpty": "No log entries match this filter. The log starts filling up once the monitor sees its first state change.",
   "sleep.minutesShort": "m",
   "sleep.never": "Never (keep spinning)",

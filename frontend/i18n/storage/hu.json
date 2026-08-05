@@ -143,6 +143,8 @@
   "sleep.idle.900": "15 perc",
   "sleep.idleLabel": "Tétlenségi idő",
   "sleep.ioDetail": "{reads} olvasás, {writes} írás",
+  "sleep.ioRead": "Olvasás",
+  "sleep.ioWrite": "Írás",
   "sleep.logEmpty": "Ehhez a szűréshez nincs naplóbejegyzés. A napló akkor kezd feltöltődni, amikor a figyelő először állapotváltozást lát.",
   "sleep.minutesShort": "p",
   "sleep.never": "Soha (mindig pörögjön)",

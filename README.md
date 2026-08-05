@@ -130,6 +130,11 @@ mindhármat kiváltja.
   tétlenségi idő, kézi altatás (a felhasználó nevével), vagy külső. Szűrhető
   lemezre, eseményre, okra és szövegre, lapozva
 - **24 órás idővonal** lemezenként, az események átmeneteiből számolva
+- **Élő írási/olvasási sebesség** a pörgő lemezeknél, 2 másodpercenként
+  frissítve. A számlálók a `/proc/diskstats`-ból jönnek (kernelmemória, nulla
+  lemez-I/O), a sebességet a böngésző számolja két minta különbségéből — így
+  a lekérdezés maga sosem ébreszt fel semmit, és egy háttérbe tett fül sem
+  torzítja az értéket
 - **Figyelmeztetések**: a GUI megnézi, mi tarthatja ébren az adott lemezt, és
   ahol biztonságos, egy gombbal ki is javítja
 

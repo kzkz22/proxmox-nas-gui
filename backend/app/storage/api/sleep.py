@@ -122,6 +122,32 @@ def list_sleep():
     }
 
 
+@router.get("/io")
+def disk_io():
+    """Raw byte counters per managed disk, for the live throughput readout.
+
+    Deliberately the cheapest endpoint in the application: one read of
+    /proc/diskstats plus a cached name lookup. No lsblk, no hdparm, no ZFS -
+    it is polled every couple of seconds by every open browser tab, and it
+    must not cost anything, least of all a disk access that would wake the
+    very drives this page is trying to keep asleep.
+
+    Rates are not computed here. The counters and the timestamp go to the
+    browser, which divides by its own measured interval: that stays correct
+    when a tab is throttled or the request is slow, and it keeps two open
+    tabs from stealing each other's previous sample.
+    """
+    counters = disksleep.read_disk_io()
+    return {
+        "ts": time.time(),
+        "disks": {
+            by_id: {"read_bytes": io[0], "write_bytes": io[1]}
+            for by_id, name in disksleep.disk_names().items()
+            if (io := counters.get(name)) is not None
+        },
+    }
+
+
 @router.put("/policy/{by_id}")
 def set_policy(by_id: str, body: PolicyRequest):
     disk = _require_disk(by_id)

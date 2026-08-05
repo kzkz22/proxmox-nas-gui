@@ -11,12 +11,17 @@ import { t } from "../core/i18n.js";
 
 const DAY = 86400;
 const LOG_PAGE = 25;
+/** How often the live throughput readout refreshes. Cheap enough to be this
+ *  frequent: the endpoint only reads /proc/diskstats, which is kernel memory
+ *  and issues no I/O, so polling it can never wake a sleeping disk. */
+const IO_INTERVAL = 2000;
 
 /** Filters of the log tab, kept across re-renders so paging does not reset
  *  what the user is looking at. */
 let logFilters = { disk: "", event: "", reason: "", text: "", offset: 0 };
 
 export async function sleepPage() {
+  stopIo();
   const isLog = location.hash.startsWith("#/sleep/log");
   view().innerHTML = `
     <div class="page-head"><h1>${esc(t("sleep.title"))}</h1></div>
@@ -73,6 +78,7 @@ async function renderDisks() {
 
   wireDisks();
   wireSettings(data.settings);
+  startIo();
   if (data.hd_idle_running) {
     $("#takeover").onclick = async () => {
       if (!(await confirmDialog(t("sleep.takeoverConfirm")))) return;
@@ -103,6 +109,7 @@ function diskCard(d, choices) {
         <span class="badge ${d.asleep ? "sleeping" : "awake"}">● ${esc(t(d.asleep ? "sleep.stateAsleep" : "sleep.stateAwake"))}</span>
         ${d.since ? `<span class="since">${esc(t("sleep.since", { time: duration(nowSeconds() - d.since) }))}</span>` : ""}
         ${d.state === "unknown" ? `<span class="since">${esc(t("sleep.stateUnknown"))}</span>` : ""}
+        <span class="io" data-io="${esc(d.by_id)}" data-io-asleep="${d.asleep ? "1" : "0"}"></span>
       </div>
     </div>
     ${timelineHtml(d.timeline)}
@@ -200,6 +207,79 @@ function wireDisks() {
       toast(btn.dataset.copy, "warn", 10000);
     }
   }));
+}
+
+/* ------------------------------------------------------------ live I/O -- */
+
+/** Previous counter sample, so a rate can be derived from two of them. */
+let ioPrevious = null;
+let ioTimer = null;
+
+function stopIo() {
+  if (ioTimer) clearInterval(ioTimer);
+  ioTimer = null;
+  ioPrevious = null;
+}
+
+function startIo() {
+  stopIo();
+  pollIo();
+  ioTimer = setInterval(pollIo, IO_INTERVAL);
+}
+
+async function pollIo() {
+  // Self-cleaning rather than unregistered on navigation: the router only
+  // replaces the view's markup, so a timer left running would keep polling
+  // from every page the user visits afterwards.
+  if (!location.hash.startsWith("#/sleep") || !document.querySelector("[data-io]")) {
+    stopIo();
+    return;
+  }
+  if (document.visibilityState === "hidden") {
+    // Background tabs are throttled, so keeping the baseline would spread the
+    // next delta over however long the user was away and report it as a rate.
+    ioPrevious = null;
+    return;
+  }
+
+  let data;
+  try {
+    data = await api("/sleep/io");
+  } catch {
+    // A dropped sample is not worth a toast; the next tick retries. Clearing
+    // the baseline stops the gap from being reported as a huge burst.
+    ioPrevious = null;
+    return;
+  }
+
+  const previous = ioPrevious;
+  ioPrevious = data;
+  if (!previous) return;
+  const seconds = data.ts - previous.ts;
+  if (seconds <= 0) return;
+
+  document.querySelectorAll("[data-io]").forEach((el) => {
+    const now = data.disks[el.dataset.io];
+    const before = previous.disks[el.dataset.io];
+    if (!now || !before) { el.textContent = ""; return; }
+    const read = Math.max(0, now.read_bytes - before.read_bytes) / seconds;
+    const write = Math.max(0, now.write_bytes - before.write_bytes) / seconds;
+    // A disk with no traffic at all says nothing rather than blinking zeroes
+    // at the user - the state badge above it already says "asleep".
+    if (read < 1 && write < 1 && el.dataset.ioAsleep === "1") {
+      el.textContent = "";
+      return;
+    }
+    el.innerHTML =
+      `<span class="io-r" title="${esc(t("sleep.ioRead"))}">↓ ${esc(rate(read))}</span>` +
+      `<span class="io-w" title="${esc(t("sleep.ioWrite"))}">↑ ${esc(rate(write))}</span>`;
+  });
+}
+
+/** Reuses humanSize so the units match the rest of the application (KiB,
+ *  MiB), rather than introducing a second, decimal convention here. */
+function rate(bytesPerSecond) {
+  return `${humanSize(bytesPerSecond)}/s`;
 }
 
 /* ------------------------------------------------------------- settings -- */

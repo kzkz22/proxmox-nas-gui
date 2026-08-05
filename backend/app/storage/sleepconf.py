@@ -83,6 +83,39 @@ def parse_diskstats(text: str) -> Dict[str, Tuple[int, int]]:
     return result
 
 
+# /proc/diskstats always reports sectors in 512-byte units, whatever the
+# drive's own logical or physical sector size is. That is a kernel interface
+# convention, not a property of the device - reading the real sector size from
+# sysfs and multiplying by it would overstate throughput fourfold on every 4Kn
+# disk.
+DISKSTATS_SECTOR = 512
+
+
+def parse_disk_io(text: str) -> Dict[str, Tuple[int, int]]:
+    """/proc/diskstats -> {kernel name: (bytes read, bytes written)}.
+
+    The counterpart of parse_diskstats: that one counts requests, for deciding
+    whether a disk was touched at all, this one counts bytes, for showing how
+    fast. Same file, same free read - no I/O is issued to any device, so
+    polling it every couple of seconds cannot wake a sleeping disk.
+    """
+    result: Dict[str, Tuple[int, int]] = {}
+    for line in text.splitlines():
+        fields = line.split()
+        # major minor name reads_completed reads_merged sectors_read ms_reading
+        # writes_completed writes_merged sectors_written ...
+        if len(fields) < 10:
+            continue
+        try:
+            result[fields[2]] = (
+                int(fields[5]) * DISKSTATS_SECTOR,
+                int(fields[9]) * DISKSTATS_SECTOR,
+            )
+        except ValueError:
+            continue
+    return result
+
+
 def is_asleep(state: str) -> bool:
     return state in ASLEEP_STATES
 
