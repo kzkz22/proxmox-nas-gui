@@ -70,6 +70,38 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
   törölhető és nem választható le; pool törlésekor a branch-eken lévő
   adatok érintetlenek maradnak
 
+### Bind mountok — prezentációs fa
+
+A fizikai tárolás és az, amit a felhasználók böngésznek, nem kell, hogy
+ugyanaz legyen. Ha a fontos adatok egy ZFS poolon (`/mnt/fontos`), a nem
+fontosak meg egy mergerfs poolon (`/mnt/bulk`) vannak, az alapból két külön
+csatolási pont, tehát két külön megosztás. Bind mounttal viszont egyetlen
+fába fűzhetők:
+
+```
+/mnt/fontos/kz  →  /mnt/family_pool/kz/fontos
+/mnt/bulk/kz    →  /mnt/family_pool/kz/nemfontos
+…
+```
+
+Így elég **egyetlen megosztást** kiadni a `/mnt/family_pool`-ra, és a
+felhasználó a `kz/fontos`, `kz/nemfontos` szerkezetet látja — miközben a
+háttérben a kettő két külön fájlrendszeren ül.
+
+- **Sablon-generátor**: megadod a prezentációs gyökeret, a mappaneveket
+  (pl. `kz, kzs, kv`) és a szinteket (`fontos` → `/mnt/fontos`,
+  `nemfontos` → `/mnt/bulk`), és a GUI élő előnézettel kiszámolja mind a
+  6 bind mountot — jelezve, mely forrásmappák hiányoznak még
+- **Hiányzó forrásmappák létrehozása** egy pipával: ZFS dataset alatt
+  datasetként, egyébként sima mappaként
+- **Fa-nézet**: a logikai szerkezet mellett minden levélnél ott a valós
+  forrás és a mögötte lévő tároló (`POOL: bulk`, `fs: /mnt/fontos`)
+- **Csak olvasható** bind mount, ha a fát nézegetésre adod ki
+- **Törlésvédelem mindkét irányban**: a bind nem törölhető, amíg megosztás
+  mutat a céljára, és a pool/diszk sem választható le, amíg egy bind onnan
+  veszi a forrását — még akkor sem, ha a megosztás csak a bind célján
+  keresztül, közvetve függ tőle
+
 | Megosztás szerkesztése | Felhasználó + jogosultsági mátrix (EN) |
 |---|---|
 | ![Share szerkesztő](docs/share-edit.png) | ![User szerkesztő](docs/user-edit-en.png) |
@@ -116,6 +148,26 @@ egyszer figyelmeztetni fog.)
 - A diszk-mountok az `/etc/fstab`-ba kerülnek (`nofail`-lel), soronként
   `# pnas:disk:<név>` címkével — csak a saját sorainkat módosítjuk, az első
   íráskor biztonsági mentés készül (`fstab.pnas-backup`).
+- A bind mountok szintén generált **systemd unitot** kapnak
+  (`/etc/systemd/system/pnas-bind-<név>.service`), nem fstab-sort. Az fstab
+  `x-systemd.requires-mounts-for=` opciója ugyanis egy `.mount` unitra várna,
+  a mergerfs poolt viszont egy *service* csatolja — így nincs mire rendezni.
+  A unit ezért közvetlenül a pool service-ét nevezi meg
+  (`Requires=`/`After=pnas-pool-<név>.service`), minden más forrásnál pedig
+  `RequiresMountsFor=` gondoskodik a sorrendről. Leálláskor a systemd
+  fordított sorrendben állít, tehát a bind előbb válik le, mint a mögötte
+  lévő tároló.
+- **A bind unit legfontosabb sora az őrszem**:
+  `ExecStartPre=/usr/bin/mountpoint -q <forrás mögötti mount>`. Enélkül egy
+  még fel nem csatolt ZFS/mergerfs forrás esetén a `mount --bind` simán
+  sikerülne — az alatta lévő **üres** mappára. A Samba ekkor üres megosztást
+  adna, egy arra ráállított szinkron-eszköz pedig törlésként propagálhatná az
+  ürességet. Az őrszem inkább nem csatol, mint hogy ez megtörténjen.
+- Ezért is: a **Syncthingnek (és minden szinkron-eszköznek) a valós
+  forrásútvonalat** add meg (`/mnt/fontos/kz`), ne a bind célját. A bind-elt
+  fa a Samba (emberi böngészés) kényelmét szolgálja.
+- Bind mount törlésekor csak a megjelenítés szűnik meg; a cél mappa üresen
+  ottmarad, a forráson lévő adatok érintetlenek.
 
 ## Konfiguráció (környezeti változók)
 
@@ -147,7 +199,7 @@ A kód három részre oszlik, a backendben és a frontenden ugyanúgy:
 |---|---|
 | `core/` | session, `state.json`, parancsfuttatás, mappa-tallózó, i18n, API-kliens |
 | `samba/` | megosztások, felhasználók, csoportok, `smb.conf` generálás |
-| `storage/` | mergerfs poolok, diszk-mountok |
+| `storage/` | mergerfs poolok, diszk-mountok, bind mountok |
 
 **A `samba/` és a `storage/` sosem importálja egymást, és a `core/` egyiket
 sem.** Mindkét felet csak a kompozíciós gyökerek látják: `backend/app/models.py`
@@ -156,8 +208,10 @@ sem.** Mindkét felet csak a kompozíciós gyökerek látják: `backend/app/mode
 
 A két rendszer két ponton találkozik, és mindkettő szándékosan a gyökerekben
 él: a `core/deps.blockers_for_path()` mondja meg, hogy egy pool leválasztását
-blokkolja-e valamelyik megosztás, a pool-mountpointot jelölő badge-et pedig a
-`main.js` injektálja a tallózóba.
+blokkolja-e valamelyik megosztás — a bind mountokat is végigkövetve, mert egy
+megosztás a prezentációs fán keresztül közvetve is függhet egy pooltól —, a
+pool-mountpointot és bind-célt jelölő badge-et pedig a `main.js` injektálja a
+tallózóba.
 
 Új oldal felvételéhez elég egy leíró a csomag `pages.js`-ébe; a navigáció és a
 routing ebből generálódik.
@@ -189,6 +243,22 @@ file, a "create share from this pool" shortcut, and deletion protection
 while shares depend on a pool. Pools are started by generated systemd
 units (`RequiresMountsFor` ordering) rather than fstab, which works on
 both mergerfs 2.33 (Debian 12) and newer.
+
+**Bind mounts** decouple the tree users browse from where the data
+actually lives. With important data on a ZFS pool and bulk data on a
+mergerfs pool, those are two mountpoints and therefore two shares; bind
+mounts weave them into one tree (`/mnt/family_pool/<user>/{fontos,
+nemfontos}`) served by a single share. A template generator expands
+"presentation root × folder names × tiers" into every bind mount needed,
+with a live preview, and can create the missing source directories - as
+ZFS datasets where the parent is one. Each bind gets a generated
+`pnas-bind-<name>.service`: fstab's `x-systemd.requires-mounts-for=`
+would wait on a `.mount` unit, but a mergerfs pool is mounted by a
+service, so the unit names that service directly. Its `ExecStartPre`
+`mountpoint` check is the part that matters - without it a bind onto a
+source whose filesystem is not mounted yet succeeds against the empty
+directory underneath, and Samba serves that emptiness. Point Syncthing
+and other sync tools at the real source path, never at a bind target.
 
 Install as root: `./deploy/install.sh`, then open `https://<host>:8481/`.
 Configuration lives in `/etc/proxmox-nas-gui/state.json`; the generated

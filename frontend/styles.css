@@ -198,3 +198,14 @@ form.panel, .panel {
 
 .chip { display: inline-block; font-size: .8rem; padding: .2rem .65rem; border: 1px dashed var(--accent-dim); color: var(--accent); border-radius: 99px; cursor: pointer; margin: .15rem .25rem .15rem 0; background: transparent; }
 .chip:hover { background: rgba(255, 140, 47, .12); border-style: solid; }
+
+.tree { padding: .6rem .4rem; }
+.tree-row { display: flex; gap: .6rem; align-items: center; padding: .28rem .4rem; border-radius: 5px; }
+.tree-row:hover { background: var(--bg-elev); }
+.tree-row .tree-src { color: var(--text-dim); }
+.tree-row .ds { font-size: .72rem; color: var(--accent); }
+td .ds { display: block; font-size: .72rem; color: var(--accent); }
+.tree-row .badge { margin-left: auto; }
+.tree-row .badge + .badge { margin-left: 0; }
+
+.tier-row input { font: inherit; background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: .3rem .5rem; }
