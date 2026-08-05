@@ -22,7 +22,7 @@ POOL = {
 def no_systemd(monkeypatch):
     """Pretend systemd accepted every unit operation, so the tests never shell
     out to systemctl or mergerfs."""
-    monkeypatch.setattr(pool_ops, "_systemctl", lambda *args: True)
+    monkeypatch.setattr(pool_ops, "systemctl", lambda *args: True)
 
 
 @pytest.fixture

@@ -2,10 +2,24 @@ from fastapi import APIRouter, HTTPException
 
 from ...core import state as state_store
 from ...core.deps import blockers_for_path
-from .. import pools
+from .. import binds, pools
 from ..models import Pool
 
 router = APIRouter(prefix="/pools", tags=["pools"])
+
+
+def _bind_blockers(st, mountpoint: str) -> None:
+    """Refuse to pull a pool out from under a bind mount that presents it.
+
+    blockers_for_path already follows binds through to the shares behind
+    them, but a bind with no share on it yet is still a configured mapping
+    the user would rather be told about than silently see break.
+    """
+    using = binds.binds_using_path(st, mountpoint)
+    if using:
+        raise HTTPException(
+            409, "bind mounts take their source from this pool: " + ", ".join(using)
+        )
 
 
 def _save_and_apply(st, pool: Pool, was_mounted: bool) -> dict:
@@ -73,6 +87,7 @@ def delete_pool(name: str):
             raise HTTPException(
                 409, "shares depend on this pool: " + ", ".join(deps)
             )
+        _bind_blockers(st, pool.mountpoint)
         pools.unmount_pool(pool)
         pools.remove_pool_unit(name)
         del st.pools[name]
@@ -99,6 +114,7 @@ def unmount_pool(name: str):
     deps = blockers_for_path(st, pool.mountpoint)
     if deps:
         raise HTTPException(409, "shares depend on this pool: " + ", ".join(deps))
+    _bind_blockers(st, pool.mountpoint)
     pools.unmount_pool(pool)
     return {"ok": True}
 

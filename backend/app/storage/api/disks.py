@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ...core import state as state_store
-from .. import poolconf, pools
+from .. import binds, poolconf, pools
 from ..models import DiskMount
 
 router = APIRouter(prefix="/disks", tags=["disks"])
@@ -127,6 +127,13 @@ def unmount_disk(name: str):
         if used_by:
             raise HTTPException(
                 409, "disk is a branch of pool(s): " + ", ".join(used_by)
+            )
+        used_by_binds = binds.binds_using_path(st, dm.mountpoint)
+        if used_by_binds:
+            raise HTTPException(
+                409,
+                "bind mounts take their source from this disk: "
+                + ", ".join(used_by_binds),
             )
         pools.unmount_disk(dm.mountpoint)
         pools.write_fstab(poolconf.remove_line(pools.read_fstab(), "disk", name))

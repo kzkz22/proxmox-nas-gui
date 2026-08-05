@@ -1,4 +1,5 @@
 from ..models import State
+from . import binds as bind_ops
 from . import pools as pool_ops
 
 
@@ -14,5 +15,8 @@ def state_view(st: State) -> dict:
             name: {**dm.model_dump(),
                    "mounted": pool_ops.is_mounted(dm.mountpoint)}
             for name, dm in st.disk_mounts.items()
+        },
+        "bind_mounts": {
+            name: bind_ops.bind_info(st, b) for name, b in st.bind_mounts.items()
         },
     }

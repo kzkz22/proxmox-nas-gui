@@ -36,7 +36,22 @@ def systemd_dir() -> Path:
     return Path(os.environ.get("PNAS_SYSTEMD_DIR", "/etc/systemd/system"))
 
 
-def _systemctl(*args: str) -> bool:
+def has_systemd() -> bool:
+    """Whether the host is actually running systemd.
+
+    Callers that must not silently substitute a plain mount for a unit start
+    (see binds.mount_bind) need to tell "systemd refused" apart from "there is
+    no systemd here", which the boolean below cannot express.
+    """
+    return Path("/run/systemd/system").is_dir()
+
+
+def systemctl(*args: str) -> bool:
+    """Best-effort systemctl; False when systemd is absent or the call failed.
+
+    Public within the storage package: the bind mounts install units the same
+    way pools do, so both go through this one wrapper.
+    """
     try:
         proc = subprocess.run(
             ["systemctl", *args], capture_output=True, text=True, timeout=60
@@ -50,16 +65,16 @@ def write_pool_unit(pool: Pool) -> None:
     path = systemd_dir() / poolconf.pool_unit_name(pool.name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(poolconf.pool_unit(pool))
-    _systemctl("daemon-reload")
-    _systemctl("enable", poolconf.pool_unit_name(pool.name))
+    systemctl("daemon-reload")
+    systemctl("enable", poolconf.pool_unit_name(pool.name))
 
 
 def remove_pool_unit(name: str) -> None:
-    _systemctl("disable", poolconf.pool_unit_name(name))
+    systemctl("disable", poolconf.pool_unit_name(name))
     path = systemd_dir() / poolconf.pool_unit_name(name)
     if path.exists():
         path.unlink()
-    _systemctl("daemon-reload")
+    systemctl("daemon-reload")
 
 
 def is_mounted(mountpoint: str) -> bool:
@@ -68,7 +83,7 @@ def is_mounted(mountpoint: str) -> bool:
 
 def mount_pool(pool: Pool) -> None:
     Path(pool.mountpoint).mkdir(parents=True, exist_ok=True)
-    if _systemctl("start", poolconf.pool_unit_name(pool.name)):
+    if systemctl("start", poolconf.pool_unit_name(pool.name)):
         return
     # No systemd (e.g. running in a plain container): invoke mergerfs
     # directly with the exact options the unit would use.
@@ -79,7 +94,7 @@ def mount_pool(pool: Pool) -> None:
 
 
 def unmount_pool(pool: Pool) -> None:
-    if _systemctl("stop", poolconf.pool_unit_name(pool.name)):
+    if systemctl("stop", poolconf.pool_unit_name(pool.name)):
         return
     if is_mounted(pool.mountpoint):
         run(["umount", pool.mountpoint])

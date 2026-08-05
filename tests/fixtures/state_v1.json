@@ -81,5 +81,19 @@
       "fstype": "xfs",
       "mountpoint": "/mnt/disks/d2"
     }
+  },
+  "bind_mounts": {
+    "kz-fontos": {
+      "name": "kz-fontos",
+      "source": "/mnt/fontos/kz",
+      "target": "/mnt/family_pool/kz/fontos",
+      "read_only": false
+    },
+    "kz-nemfontos": {
+      "name": "kz-nemfontos",
+      "source": "/mnt/pool/media/kz",
+      "target": "/mnt/family_pool/kz/nemfontos",
+      "read_only": true
+    }
   }
 }

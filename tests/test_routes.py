@@ -45,6 +45,14 @@ EXPECTED_ROUTES = {
     ("POST", "/api/disks/mount"),
     ("POST", "/api/disks/format"),
     ("DELETE", "/api/disks/mount/{name}"),
+    ("GET", "/api/binds"),
+    ("POST", "/api/binds"),
+    ("PUT", "/api/binds/{name}"),
+    ("DELETE", "/api/binds/{name}"),
+    ("POST", "/api/binds/{name}/mount"),
+    ("POST", "/api/binds/{name}/unmount"),
+    ("POST", "/api/binds/plan"),
+    ("POST", "/api/binds/bulk"),
 }
 
 # Reachable without a session, by design.

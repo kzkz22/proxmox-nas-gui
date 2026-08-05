@@ -3,12 +3,13 @@ import { setEntryDecorator } from "./core/browser.js";
 import { loadLang, toggleLang } from "./core/i18n.js";
 import { showLogin } from "./core/login.js";
 import { renderNav, route, startApp } from "./router.js";
-import { poolBadge } from "./storage/badges.js";
+import { pathBadge } from "./storage/badges.js";
 
 // Composition root: the only place that wires the two halves together. The
-// directory browser lives in core and must not know about pools, so the pool
-// marker is installed here instead of imported where the browser is opened.
-setEntryDecorator(poolBadge);
+// directory browser lives in core and must not know about pools or bind
+// mounts, so the marker is installed here instead of imported where the
+// browser is opened.
+setEntryDecorator(pathBadge);
 
 window.addEventListener(UNAUTHORIZED_EVENT, showLogin);
 window.addEventListener("hashchange", route);
