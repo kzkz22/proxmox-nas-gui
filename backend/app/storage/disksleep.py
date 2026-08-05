@@ -187,6 +187,31 @@ def read_diskstats() -> Dict[str, Tuple[int, int]]:
     return sleepconf.parse_diskstats(_read(Path("/proc/diskstats")))
 
 
+def read_disk_io() -> Dict[str, Tuple[int, int]]:
+    return sleepconf.parse_disk_io(_read(Path("/proc/diskstats")))
+
+
+# by-id name -> kernel name, with a short time-to-live. The throughput
+# endpoint is polled every couple of seconds and only needs this mapping;
+# rebuilding it means running lsblk and walking /dev/disk/by-id, which is far
+# too much for that cadence. A disk plugged in mid-session therefore takes up
+# to NAME_CACHE_TTL seconds to start showing a rate, which is a fair trade for
+# not running lsblk 1800 times an hour.
+NAME_CACHE_TTL = 60
+_name_cache: Tuple[float, Dict[str, str]] = (0.0, {})
+
+
+def disk_names() -> Dict[str, str]:
+    global _name_cache
+    cached_at, cached = _name_cache
+    now = time.time()
+    if cached and now - cached_at < NAME_CACHE_TTL:
+        return cached
+    names = {d["by_id"]: d["name"] for d in list_sleep_disks()}
+    _name_cache = (now, names)
+    return names
+
+
 def spin_down(path: str, preferred: Optional[str] = None) -> Tuple[bool, Optional[str], str]:
     """Put a disk into standby. Returns (ok, method that worked, detail).
 

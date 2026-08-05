@@ -47,6 +47,9 @@ def disks(monkeypatch):
     })
     monkeypatch.setattr(disksleep, "hd_idle_running", lambda: False)
     monkeypatch.setattr(monitor, "_tracked", {})
+    # Module-level and time-based, so without this one test's disk list would
+    # still be answering /sleep/io in the next.
+    monkeypatch.setattr(disksleep, "_name_cache", (0.0, {}))
     return DISKS
 
 
@@ -83,6 +86,43 @@ def test_the_state_falls_back_to_a_live_read_without_the_monitor(
     body = auth_client.get("/api/sleep").json()
 
     assert all(d["asleep"] is True for d in body["disks"])
+
+
+# --- live throughput ---------------------------------------------------------
+
+def test_io_returns_raw_counters_keyed_by_by_id(auth_client, sandbox, disks, monkeypatch):
+    monkeypatch.setattr(disksleep, "read_disk_io", lambda: {
+        "sdb": (1024, 2048), "sda": (0, 0), "sdz": (9, 9),
+    })
+
+    body = auth_client.get("/api/sleep/io").json()
+
+    assert body["disks"][TOSHIBA] == {"read_bytes": 1024, "write_bytes": 2048}
+    assert body["disks"][WD] == {"read_bytes": 0, "write_bytes": 0}
+    assert "ts" in body
+
+
+def test_io_skips_disks_diskstats_does_not_mention(auth_client, sandbox, disks, monkeypatch):
+    """A disk pulled between the name cache refresh and the poll would
+    otherwise come back as a KeyError rather than simply missing."""
+    monkeypatch.setattr(disksleep, "read_disk_io", lambda: {"sdb": (1, 2)})
+
+    body = auth_client.get("/api/sleep/io").json()
+
+    assert set(body["disks"]) == {TOSHIBA}
+
+
+def test_io_does_not_probe_any_device(auth_client, sandbox, disks, monkeypatch):
+    """The point of the endpoint: it is polled every couple of seconds, so it
+    must not run hdparm, lsblk or anything else that touches a drive."""
+    def explode(*args, **kwargs):
+        raise AssertionError("the throughput endpoint touched a device")
+
+    monkeypatch.setattr(disksleep, "run", explode)
+    monkeypatch.setattr(disksleep, "power_state", explode)
+    monkeypatch.setattr(disksleep, "read_disk_io", lambda: {"sdb": (1, 2)})
+
+    assert auth_client.get("/api/sleep/io").status_code == 200
 
 
 # --- policies ---------------------------------------------------------------

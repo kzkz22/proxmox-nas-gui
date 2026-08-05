@@ -53,6 +53,19 @@ def test_diskstats_yields_read_and_write_counts():
     assert stats["nvme0n1"] == (99, 88)
 
 
+def test_disk_io_converts_sectors_to_bytes():
+    """The 512 is a /proc/diskstats interface convention, not the drive's own
+    sector size - using the real one would overstate a 4Kn disk fourfold."""
+    io = sleepconf.parse_disk_io(DISKSTATS)
+
+    assert io["sda"] == (9876 * 512, 4321 * 512)
+    assert io["nvme0n1"] == (800 * 512, 700 * 512)
+
+
+def test_disk_io_ignores_lines_without_the_sector_columns():
+    assert sleepconf.parse_disk_io("8 0 sda 1 0 96 1 5\nnonsense\n") == {}
+
+
 def test_diskstats_ignores_short_and_broken_lines():
     assert sleepconf.parse_diskstats("8 0 sda 1\nnonsense\n\n") == {}
 
