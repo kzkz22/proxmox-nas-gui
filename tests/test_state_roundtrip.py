@@ -13,7 +13,14 @@ from pathlib import Path
 
 from app.models import State
 from app.samba.models import GlobalSettings, GroupInfo, Share, UserInfo
-from app.storage.models import BindMount, Branch, DiskMount, Pool
+from app.storage.models import (
+    BindMount,
+    Branch,
+    DiskMount,
+    DiskSleepPolicy,
+    DiskSleepSettings,
+    Pool,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "state_v1.json"
 
@@ -44,6 +51,10 @@ def test_fixture_covers_every_field_of_every_nested_model():
     assert set(raw["pools"]["media"]["branches"][0]) == set(Branch.model_fields)
     assert set(raw["disk_mounts"]["d1"]) == set(DiskMount.model_fields)
     assert set(raw["bind_mounts"]["kz-fontos"]) == set(BindMount.model_fields)
+    assert set(raw["disk_sleep"]["ata-TOSHIBA_DT01ACA300_334401VAS"]) == set(
+        DiskSleepPolicy.model_fields
+    )
+    assert set(raw["disk_sleep_settings"]) == set(DiskSleepSettings.model_fields)
 
 
 def test_empty_state_serialises_with_all_keys():
@@ -59,3 +70,7 @@ def test_defaults_are_not_silently_changed():
     assert st.settings.min_protocol == "SMB2"
     assert st.shares == {} and st.pools == {} and st.disk_mounts == {}
     assert st.bind_mounts == {}
+    # A disk nobody configured keeps spinning: the monitor must never spin a
+    # disk down because a default said so.
+    assert st.disk_sleep == {}
+    assert st.disk_sleep_settings.default_idle_seconds == 0

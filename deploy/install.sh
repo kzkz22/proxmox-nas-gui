@@ -6,6 +6,7 @@ set -euo pipefail
 
 INSTALL_DIR=/opt/proxmox-nas-gui
 CONF_DIR=/etc/proxmox-nas-gui
+DATA_DIR=/var/lib/proxmox-nas-gui
 PORT=8481
 
 if [[ $EUID -ne 0 ]]; then
@@ -15,14 +16,19 @@ fi
 
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 
-echo "==> Installing packages (samba, python3-venv, openssl, e2fsprogs, xfsprogs, fdisk, udev, wsdd2)"
+echo "==> Installing packages (samba, python3-venv, openssl, e2fsprogs, xfsprogs, fdisk, udev, wsdd2, hdparm, sg3-utils, sdparm)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 # wsdd2, not wsdd: the original Python wsdd was dropped from Debian's
 # archive as of trixie (Debian 13 / Proxmox VE 9), only wsdd2 (a separate,
 # C-based implementation of the same WS-Discovery protocol) is packaged for
 # both bookworm and trixie.
-apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g e2fsprogs xfsprogs fdisk udev wsdd2
+# hdparm, sg3-utils and sdparm are all three needed, not alternatives: hdparm
+# speaks ATA STANDBY IMMEDIATE, which plenty of drives (and every USB/SAS
+# bridge) ignore, sg_start speaks SCSI START STOP UNIT, and sdparm is the last
+# resort. The disk sleep page tries them in that order per disk.
+apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g e2fsprogs \
+    xfsprogs fdisk udev wsdd2 hdparm sg3-utils sdparm
 
 echo "==> Copying application to ${INSTALL_DIR}"
 mkdir -p "$INSTALL_DIR"
@@ -39,9 +45,14 @@ fi
 "$INSTALL_DIR/venv/bin/pip" install -q --upgrade pip
 "$INSTALL_DIR/venv/bin/pip" install -q -r "$INSTALL_DIR/backend/requirements.txt"
 
-echo "==> Preparing ${CONF_DIR}"
+echo "==> Preparing ${CONF_DIR} and ${DATA_DIR}"
 mkdir -p "$CONF_DIR"
 chmod 700 "$CONF_DIR"
+# The disk power-state log lives here rather than in CONF_DIR: it is data the
+# application accumulates, not configuration, and it is deliberately on the
+# system disk so that writing it can never wake a managed disk.
+mkdir -p "$DATA_DIR"
+chmod 700 "$DATA_DIR"
 
 if [[ ! -f "$CONF_DIR/cert.pem" ]]; then
     echo "==> Generating self-signed TLS certificate"

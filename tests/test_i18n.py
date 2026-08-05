@@ -18,7 +18,7 @@ LANGS = ("en", "hu")
 
 # The full key set before the per-package split. The union of the split files
 # must still equal this, so the split provably lost nothing.
-EXPECTED_KEY_COUNT = 206
+EXPECTED_KEY_COUNT = 317
 
 
 def load(bundle: str, lang: str) -> dict:
@@ -87,7 +87,11 @@ def test_every_dynamic_key_prefix_has_translations(lang):
     dictionary = merged(lang)
     prefixes = set()
     for js in FRONTEND.rglob("*.js"):
-        prefixes |= set(re.findall(r'\bt\(\s*"([\w.]+\.)"\s*\+', js.read_text()))
+        text = js.read_text()
+        prefixes |= set(re.findall(r'\bt\(\s*"([\w.]+\.)"\s*\+', text))
+        # t(`sleepwarn.${w.id}.title`) - a template literal builds the key
+        # from both ends, so only the leading prefix can be checked.
+        prefixes |= set(re.findall(r"\bt\(\s*`([\w.]+\.)\$\{", text))
 
     assert prefixes, "expected the concatenated t() calls to be found"
     empty = sorted(p for p in prefixes if not any(k.startswith(p) for k in dictionary))
@@ -98,5 +102,5 @@ def test_every_page_in_the_registry_has_a_nav_label():
     registry = "".join(p.read_text() for p in FRONTEND.rglob("pages.js"))
     ids = re.findall(r'id:\s*"(\w+)"', registry)
     nav_keys = re.findall(r'navKey:\s*"([\w.]+)"', registry)
-    assert len(ids) == len(nav_keys) == 6
+    assert len(ids) == len(nav_keys) == 7
     assert set(nav_keys) <= set(merged("hu"))

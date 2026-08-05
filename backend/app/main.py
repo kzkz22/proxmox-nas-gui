@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -7,8 +8,26 @@ from fastapi.staticfiles import StaticFiles
 
 from .core.proc import SystemOpError
 from .routes import api_router
+from .storage import monitor
 
-app = FastAPI(title="Proxmox NAS GUI", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Owns the disk sleep monitor for as long as the app is up.
+
+    The monitor runs in this process rather than as a second unit: the
+    service starts a single uvicorn worker, so there is exactly one loop and
+    restarting the service restarts it. Wiring it here rather than inside the
+    storage package keeps the process lifecycle in the composition root.
+    """
+    await monitor.start()
+    try:
+        yield
+    finally:
+        await monitor.stop()
+
+
+app = FastAPI(title="Proxmox NAS GUI", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.include_router(api_router)
 
 

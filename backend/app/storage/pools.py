@@ -162,7 +162,7 @@ def partition_whole_disk(path: str) -> str:
     return created[0]["path"]
 
 
-def _by_id_map() -> dict:
+def by_id_map() -> dict:
     """Map a resolved device path to its stable /dev/disk/by-id symlinks.
 
     Only ata-/scsi-/nvme- names are kept (physical-disk identifiers); the
@@ -247,7 +247,7 @@ def list_block_devices() -> List[dict]:
     except SystemOpError:
         return []
     devices = poolconf.parse_lsblk(out)
-    by_id = _by_id_map()
+    by_id = by_id_map()
     for dev in devices:
         try:
             resolved = str(Path(dev["path"]).resolve())

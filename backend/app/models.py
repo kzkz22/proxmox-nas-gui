@@ -13,7 +13,13 @@ from typing import Dict
 from pydantic import BaseModel, Field
 
 from .samba.models import GlobalSettings, GroupInfo, Share, UserInfo
-from .storage.models import BindMount, DiskMount, Pool
+from .storage.models import (
+    BindMount,
+    DiskMount,
+    DiskSleepPolicy,
+    DiskSleepSettings,
+    Pool,
+)
 
 
 class State(BaseModel):
@@ -25,3 +31,6 @@ class State(BaseModel):
     pools: Dict[str, Pool] = Field(default_factory=dict)
     disk_mounts: Dict[str, DiskMount] = Field(default_factory=dict)
     bind_mounts: Dict[str, BindMount] = Field(default_factory=dict)
+    # Keyed by /dev/disk/by-id name; see DiskSleepPolicy.
+    disk_sleep: Dict[str, DiskSleepPolicy] = Field(default_factory=dict)
+    disk_sleep_settings: DiskSleepSettings = Field(default_factory=DiskSleepSettings)

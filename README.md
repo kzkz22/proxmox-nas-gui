@@ -39,6 +39,9 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
   megosztások listája — ugyanaz az adat két nézetben
 - **Lomtár** megosztásonként (`vfs_recycle`): a hálózatról törölt fájlok a
   `.Recycle.Bin`-be kerülnek, a felületről üríthető
+- **Lemezalvás-kezelés**: lemezenként állítható tétlenségi idő, kézi
+  altatás, kereshető állapotnapló és figyelmeztetés arról, mi tartja ébren
+  az adott lemezt (lásd lentebb)
 - **Kétnyelvű felület** (magyar/angol, egy kattintással váltható)
 - **PAM bejelentkezés** a hoszt root jelszavával, HTTPS-en
 
@@ -110,6 +113,86 @@ háttérben a kettő két külön fájlrendszeren ül.
 |---|---|
 | ![Poolok](docs/pools.png) | ![Pool szerkesztő](docs/pool-edit.png) |
 
+### Lemezek alvó állapota
+
+A Proxmoxból hiányzik az Unraid-szerű lemezalvás-kezelés, a `hd-idle` pedig
+kézzel írt konfigot igényel (`/etc/default/hd-idle`), amit lemezcserénél át
+kell írni — és csak azt naplózza, amit ő maga altatott el. Ez az oldal
+mindhármat kiváltja.
+
+- **Tétlenségi idő lemezenként**, legördülőből: 15/30/45 perc, 1–6 óra, vagy
+  „Soha". A beállítás a lemez `/dev/disk/by-id` nevéhez kötődik, nem a
+  `/dev/sdX`-hez — az újraindításkor változhat, és akkor egy másik lemezre
+  vonatkozna a házirend
+- **Kézi altatás** a tétlenségi idő lejárta előtt, egy gombbal
+- **Kereshető napló**: minden elalvás és ébredés bekerül egy helyi SQLite
+  adatbázisba (`/var/lib/proxmox-nas-gui/disk-events.db`), okkal együtt —
+  tétlenségi idő, kézi altatás (a felhasználó nevével), vagy külső. Szűrhető
+  lemezre, eseményre, okra és szövegre, lapozva
+- **24 órás idővonal** lemezenként, az események átmeneteiből számolva
+- **Figyelmeztetések**: a GUI megnézi, mi tarthatja ébren az adott lemezt, és
+  ahol biztonságos, egy gombbal ki is javítja
+
+![Lemezek alvó állapota](docs/sleep.png)
+
+#### Hogyan altat, és miért nem hd-idle-lel?
+
+A `hdparm -y` az ATA STANDBY IMMEDIATE parancsot küldi, amit sok lemez (és
+gyakorlatilag minden USB/SAS híd) figyelmen kívül hagy — ráadásul hiba nélkül,
+tehát a parancs sikeres kilépése nem bizonyíték. A GUI ezért sorban próbálja a
+`hdparm -y` → `sg_start --stop` (SCSI START STOP UNIT) → `sdparm --command=stop`
+parancsokat, és **mindegyik után `hdparm -C`-vel ellenőrzi**, hogy a lemez
+tényleg készenlétbe került-e. A működő módszert lemezenként megjegyzi, így a
+következő altatás már egyetlen parancs.
+
+A tétlenséget a `/proc/diskstats` számlálói adják (kernelmemóriából, nulla
+I/O), az energiaállapotot a `hdparm -C` — az ATA CHECK POWER MODE parancsra a
+lemez az elektronikájából válaszol, nem pörög fel tőle. **Maga a figyelés
+tehát soha nem ébreszti fel a lemezeket.** A figyelő a webalkalmazás
+folyamatában fut (egy uvicorn worker), nem külön szolgáltatásként.
+
+Ha a `hd-idle` fut, az oldal tetején figyelmeztetés jelenik meg: amíg fut, ő
+is altat, és a napló hiányos marad. Az „Átvétel" gomb leállítja és letiltja,
+a `HD_IDLE_OPTS` sorból pedig átveszi a lemezenkénti időzítéseket (a legközelebbi
+felkínált értékre kerekítve, amiről jelzést is ad).
+
+#### Mi tartja ébren a lemezt?
+
+Lemezenként az alábbiakat vizsgálja. A ✅ jelölt javítások egy kattintással
+lefuttathatók a felületről; a többinél a parancs megjelenik, de szándékosan
+nem futtatjuk le — vagy nem ennek az alkalmazásnak a hatásköre, vagy olyan
+kompromisszum, amit csak a felhasználó mérlegelhet.
+
+| Ellenőrzés | Miért ébreszt | Javaslat | |
+|---|---|---|---|
+| `smartd` | 30 percenként SMART-adatot olvas, ami felpörgeti az alvó lemezt | `-n standby,q` a `/etc/smartd.conf` eszközsorára | ✅ |
+| ZFS `atime` | `atime=on` mellett az olvasás is írást vált ki | `zfs set atime=off <pool>` | ✅ |
+| Csatolási opciók | `relatime` mellett az olvasás is ír a lemezre | `noatime` a GUI saját fstab-sorába + élő remount | ✅ |
+| mergerfs gyorsítótár | minden könyvtárlistázás megérinti az összes branch-et | `cache.statfs=60,cache.attr=300,cache.entry=300` | |
+| `zfs-auto-snapshot` | negyedóránkénti pillanatkép = metaadat-írás | `zfs set com.sun:auto-snapshot=false <dataset>` | |
+| Proxmox-tároló | a `pvestatd` 10 másodpercenként lekérdez minden tárolót | `pvesm set <id> --disable 1` | |
+| ZFS scrub | havonta órákra ébren tartja a pool minden lemezét | csak tájékoztatás | |
+| ZFS zvol | futó VM/konténer folyamatos I/O-t okoz | csak tájékoztatás | |
+| `updatedb` | a napi indexelés végigjárja a fájlrendszert | az útvonal felvétele a `PRUNEPATHS` közé | |
+
+**A mergerFS-ről őszintén:** a mergerfs
+[saját dokumentációja](https://github.com/trapexit/mergerfs/wiki/Limit-Drive-Spinup)
+kimondja, hogy pool szinten nem lehet megbízhatóan megakadályozni a
+felpörgést — a mergerfs proxy, nem gyorsítótár, és egy `readdir` definíció
+szerint minden branch-et megérint. A cache-opciók csak az *ismétlődő*
+metaadat-kéréseket szűrik. A valódi tanács ezért az, hogy indexelőt,
+médiaszervert vagy mentést a mögöttes útvonalra irányíts, ne a poolra.
+
+| Mi tartja ébren? | Állapotnapló |
+|---|---|
+| ![Figyelmeztetések](docs/sleep-warnings.png) | ![Napló](docs/sleep-log.png) |
+
+**A rendszerlemez** — ahogy a formázásnál is — meg sem jelenik az oldalon.
+Három szabály zárja ki: a csatolási pont (`/`, `/boot`, LVM-en át is), az
+aktív swap, és ZFS-gyökér esetén a `findmnt` + `zpool list` alapján
+azonosított pooltagok. Ez utóbbi külön szabály, mert egy `zfs_member`
+partíciónak nincs csatolási pontja, tehát az első kettő nem fogná ki.
+
 ## Telepítés
 
 Proxmox VE hoszton (vagy bármely Debian-alapú rendszeren, LXC-ben is), rootként:
@@ -168,6 +251,15 @@ egyszer figyelmeztetni fog.)
   fa a Samba (emberi böngészés) kényelmét szolgálja.
 - Bind mount törlésekor csak a megjelenítés szűnik meg; a cél mappa üresen
   ottmarad, a forráson lévő adatok érintetlenek.
+- A lemezalvás-figyelő a webalkalmazás folyamatában fut, 30 másodpercenként.
+  A tétlenséget a `/proc/diskstats` számlálóiból, az energiaállapotot a
+  `hdparm -C`-ből olvassa — egyik sem okoz lemez-I/O-t, tehát a figyelés maga
+  soha nem ébreszt fel semmit. Az események
+  `/var/lib/proxmox-nas-gui/disk-events.db`-be kerülnek (SQLite), ami a
+  rendszerlemezen van.
+- Az altatási házirendek a `/dev/disk/by-id` névhez kötődnek, nem a
+  `/dev/sdX`-hez: az utóbbi felderítési sorrendben kap nevet, tehát
+  újraindítás után más lemezre vonatkozhatna ugyanaz a beállítás.
 
 ## Konfiguráció (környezeti változók)
 
@@ -179,6 +271,13 @@ egyszer figyelmeztetni fog.)
 | `PNAS_GEN_CONF` | `/etc/samba/proxmox-nas-gui.conf` | A generált konfig helye |
 | `PNAS_FSTAB` | `/etc/fstab` | A diszk-mountok fstab fájlja |
 | `PNAS_SYSTEMD_DIR` | `/etc/systemd/system` | A generált pool-unitok könyvtára |
+| `PNAS_LOG_DB` | `/var/lib/proxmox-nas-gui/disk-events.db` | A lemezállapot-napló adatbázisa |
+| `PNAS_SMARTD_CONF` | `/etc/smartd.conf` | A smartd konfig (az alvás-ellenőrzéshez) |
+| `PNAS_HD_IDLE_CONF` | `/etc/default/hd-idle` | A hd-idle konfig (átvételkor olvassuk) |
+| `PNAS_PVE_STORAGE` | `/etc/pve/storage.cfg` | A Proxmox tárolókonfig (csak olvassuk) |
+| `PNAS_UPDATEDB_CONF` | `/etc/updatedb.conf` | Az updatedb konfig (csak olvassuk) |
+| `PNAS_CRON_DIR` | `/etc/cron.d` | Cron-bejegyzések könyvtára (csak olvassuk) |
+| `PNAS_DISABLE_MONITOR` | – | `1` esetén az alvásfigyelő el sem indul (a tesztek ezt használják) |
 
 ## Fejlesztés
 
@@ -199,7 +298,7 @@ A kód három részre oszlik, a backendben és a frontenden ugyanúgy:
 |---|---|
 | `core/` | session, `state.json`, parancsfuttatás, mappa-tallózó, i18n, API-kliens |
 | `samba/` | megosztások, felhasználók, csoportok, `smb.conf` generálás |
-| `storage/` | mergerfs poolok, diszk-mountok, bind mountok |
+| `storage/` | mergerfs poolok, diszk-mountok, bind mountok, lemezalvás |
 
 **A `samba/` és a `storage/` sosem importálja egymást, és a `core/` egyiket
 sem.** Mindkét felet csak a kompozíciós gyökerek látják: `backend/app/models.py`
@@ -212,6 +311,11 @@ blokkolja-e valamelyik megosztás — a bind mountokat is végigkövetve, mert e
 megosztás a prezentációs fán keresztül közvetve is függhet egy pooltól —, a
 pool-mountpointot és bind-célt jelölő badge-et pedig a `main.js` injektálja a
 tallózóba.
+
+A csomagokon belül mindenhol ugyanaz a kettősség: a tiszta, alrendszer nélküli
+fél (`poolconf.py`, `bindconf.py`, `sambaconf.py`, `sleepconf.py`) egységben
+tesztelhető, a valódi eszközökhöz és fájlokhoz nyúló fél (`pools.py`,
+`binds.py`, `service.py`, `disksleep.py`) pedig ezekre épül.
 
 Új oldal felvételéhez elég egy leíró a csomag `pages.js`-ébe; a navigáció és a
 routing ebből generálódik.

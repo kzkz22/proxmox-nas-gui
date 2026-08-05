@@ -53,6 +53,13 @@ EXPECTED_ROUTES = {
     ("POST", "/api/binds/{name}/unmount"),
     ("POST", "/api/binds/plan"),
     ("POST", "/api/binds/bulk"),
+    ("GET", "/api/sleep"),
+    ("PUT", "/api/sleep/policy/{by_id}"),
+    ("POST", "/api/sleep/spindown/{by_id}"),
+    ("PUT", "/api/sleep/settings"),
+    ("GET", "/api/sleep/events"),
+    ("POST", "/api/sleep/fix"),
+    ("POST", "/api/sleep/takeover"),
 }
 
 # Reachable without a session, by design.
