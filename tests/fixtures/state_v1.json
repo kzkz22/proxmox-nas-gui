@@ -95,5 +95,21 @@
       "target": "/mnt/family_pool/kz/nemfontos",
       "read_only": true
     }
+  },
+  "disk_sleep": {
+    "ata-TOSHIBA_DT01ACA300_334401VAS": {
+      "idle_seconds": 1800,
+      "method": "hdparm"
+    },
+    "ata-WDC_WD10SPCX-21KHST0_WD-WX21A44D9471": {
+      "idle_seconds": 0,
+      "method": null
+    }
+  },
+  "disk_sleep_settings": {
+    "enabled": true,
+    "poll_seconds": 30,
+    "default_idle_seconds": 0,
+    "retention_days": 90
   }
 }

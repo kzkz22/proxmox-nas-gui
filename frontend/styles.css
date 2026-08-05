@@ -209,3 +209,109 @@ td .ds { display: block; font-size: .72rem; color: var(--accent); }
 .tree-row .badge + .badge { margin-left: 0; }
 
 .tier-row input { font: inherit; background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: .3rem .5rem; }
+
+/* --- disk sleep ---------------------------------------------------------- */
+
+.tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.2rem; }
+.tabs a {
+  padding: .5rem .95rem;
+  font-size: .93rem;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-weight: 500;
+}
+.tabs a:hover { color: var(--text); }
+.tabs a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.summary { display: flex; gap: 2.2rem; flex-wrap: wrap; padding: .9rem 1.3rem; margin-bottom: 1rem; }
+.stat { display: flex; flex-direction: column; gap: .1rem; }
+.stat .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 600; }
+.stat .v { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat .v.warn { color: #ffc42f; }
+.stat .v small { font-size: .8rem; font-weight: 500; color: var(--text-dim); }
+
+.banner {
+  display: flex; align-items: center; gap: 1rem;
+  background: rgba(255, 140, 47, .08);
+  border: 1px solid var(--accent-dim);
+  border-radius: 8px;
+  padding: .75rem 1.1rem;
+  margin-bottom: 1.1rem;
+  font-size: .92rem;
+}
+.banner .btxt { flex: 1; }
+
+.badge.sleeping { background: rgba(90, 120, 200, .18); color: #9db4ee; }
+.badge.awake { background: rgba(255, 140, 47, .16); color: var(--accent); }
+
+.disk { margin-bottom: .9rem; padding: 1.05rem 1.25rem; }
+.disk-top { display: flex; align-items: flex-start; gap: 1rem; }
+.disk-id { flex: 1; min-width: 0; }
+.disk-title { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+.disk-title h3 { font-size: .95rem; margin: 0; font-weight: 600; }
+.disk-title .size { color: var(--text-dim); font-size: .9rem; }
+.byid { font-family: ui-monospace, "Cascadia Code", monospace; font-size: .82rem; color: var(--text-dim); margin-top: .15rem; }
+.role { font-size: .85rem; color: var(--text-dim); margin-top: .35rem; display: flex; gap: .45rem; flex-wrap: wrap; align-items: center; }
+.role .ds { color: var(--accent); font-size: .78rem; }
+.state-col { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; }
+.since { font-size: .82rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.arrow { color: var(--text-dim); }
+
+/* 24h asleep/awake strip. Segments come from the event log's transitions,
+   so the width of each is real elapsed time, not a sample. */
+.tl-wrap { margin: .95rem 0 .2rem; }
+.tl { display: flex; height: .7rem; border-radius: 3px; overflow: hidden; border: 1px solid var(--border); background: var(--bg); }
+.tl i { display: block; height: 100%; }
+.tl i.awake { background: var(--accent); }
+.tl i.asleep { background: #2c3450; }
+.tl i.unknown { background: var(--bg-elev); }
+.tl-ax { display: flex; justify-content: space-between; font-size: .7rem; color: var(--text-dim); margin-top: .25rem; }
+
+.disk-ctl { display: flex; align-items: center; gap: .7rem; margin-top: .95rem; flex-wrap: wrap; }
+.disk-ctl .lbl { font-size: .85rem; color: var(--text-dim); font-weight: 600; }
+.disk-ctl select {
+  font: inherit; background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; padding: .25rem .5rem;
+}
+
+.warnbox > summary.warnline {
+  display: flex; align-items: center; gap: .5rem; cursor: pointer;
+  margin-top: .85rem; padding-top: .75rem; border-top: 1px solid var(--border);
+  font-size: .88rem; color: #ffc42f; list-style: none;
+}
+.warnbox > summary::-webkit-details-marker { display: none; }
+.warnbox > summary::after { content: "▾"; color: var(--text-dim); margin-left: auto; }
+.warnbox[open] > summary::after { content: "▴"; }
+
+.wrow { display: flex; gap: .85rem; padding: .85rem 0; border-bottom: 1px solid var(--border); }
+.wrow:last-child { border-bottom: none; }
+.wsev { width: .28rem; border-radius: 99px; flex: 0 0 auto; align-self: stretch; }
+.wsev.crit { background: var(--danger); }
+.wsev.warn { background: #ffc42f; }
+.wsev.info { background: var(--border); }
+.wbody { flex: 1; min-width: 0; }
+.wbody h3 { font-size: .92rem; margin: 0; font-weight: 600; }
+.wbody p { margin: .25rem 0 0; font-size: .87rem; color: var(--text-dim); }
+.cmd {
+  font-family: ui-monospace, "Cascadia Code", monospace; font-size: .82rem;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: .45rem .65rem; margin-top: .55rem; overflow-x: auto; white-space: pre;
+}
+.wact { display: flex; align-items: center; gap: .5rem; margin-top: .55rem; flex-wrap: wrap; }
+.wact .why { font-size: .8rem; color: var(--text-dim); }
+
+.filters { display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-end; padding: .95rem 1.1rem; margin-bottom: 1rem; }
+.filters .field { display: flex; flex-direction: column; gap: .25rem; margin-bottom: 0; }
+.filters label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); font-weight: 600; margin: 0; }
+.filters select, .filters input[type=text] {
+  font: inherit; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: .35rem .6rem; width: auto;
+}
+.pager { display: flex; align-items: center; gap: .6rem; margin-top: .9rem; font-size: .85rem; color: var(--text-dim); }
+.num { font-variant-numeric: tabular-nums; }
+.why-cell { font-size: .86rem; }
+/* Event pills sit in a narrow table column; without this the two-word labels
+   wrap inside the pill instead of widening the column. */
+td .badge { white-space: nowrap; }

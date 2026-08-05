@@ -7,7 +7,9 @@ const byId = Object.fromEntries(
 
 /** Nav order is a product decision, not an artefact of which package a page
  *  came from, so it is spelled out here in the composition root. */
-export const PAGES = ["shares", "pools", "binds", "users", "groups", "settings"].map((id) => {
+export const PAGES = [
+  "shares", "pools", "binds", "sleep", "users", "groups", "settings",
+].map((id) => {
   const page = byId[id];
   if (!page) throw new Error(`no page registered for "${id}"`);
   return page;

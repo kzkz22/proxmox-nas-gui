@@ -1,10 +1,14 @@
 import re
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 POOL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,30}$")
+# The idle times the GUI offers, in seconds, plus 0 for "never sleep". A
+# closed set rather than a free number: these are the choices the dropdown
+# shows, and anything else arriving over the API is a client bug.
+IDLE_CHOICES = (0, 900, 1800, 2700, 3600, 7200, 10800, 14400, 18000, 21600)
 MINFREESPACE_RE = re.compile(r"^\d+[KMGT]?$")
 CREATE_POLICIES = ("mfs", "epmfs", "ff", "pfrd", "rand", "lus", "lfs", "eplfs", "epff")
 # fstab is whitespace-delimited, so paths and options written there must not
@@ -152,6 +156,61 @@ class BindMount(BaseModel):
         ).startswith(self.target + "/"):
             raise ValueError("source and target may not contain each other")
         return self
+
+
+class DiskSleepPolicy(BaseModel):
+    """How long a single physical disk may idle before it is spun down.
+
+    Keyed in the state by the /dev/disk/by-id name rather than by /dev/sdX:
+    the kernel names are assigned in discovery order and can move between
+    boots, so a policy keyed by them would silently start applying to a
+    different disk. The by-id name carries the model and serial, which is
+    also exactly what the hd-idle configuration this replaces used.
+    """
+
+    idle_seconds: int = 0
+    # The spin-down command that last worked on this disk. hdparm cannot put
+    # every drive into standby, so the caller walks a chain of methods and
+    # remembers the winner instead of paying for the failures every time.
+    method: Optional[str] = None
+
+    @field_validator("idle_seconds")
+    @classmethod
+    def _valid_idle(cls, v: int) -> int:
+        if v not in IDLE_CHOICES:
+            raise ValueError("invalid idle time")
+        return v
+
+
+class DiskSleepSettings(BaseModel):
+    enabled: bool = True
+    poll_seconds: int = 30
+    # A disk nobody has configured yet keeps spinning. Spinning down a disk
+    # the user did not ask about is the one failure mode that can cost data
+    # availability (or a stalled VM), so the safe direction is "do nothing".
+    default_idle_seconds: int = 0
+    retention_days: int = 90
+
+    @field_validator("poll_seconds")
+    @classmethod
+    def _valid_poll(cls, v: int) -> int:
+        if not 10 <= v <= 300:
+            raise ValueError("poll interval must be between 10 and 300 seconds")
+        return v
+
+    @field_validator("default_idle_seconds")
+    @classmethod
+    def _valid_default_idle(cls, v: int) -> int:
+        if v not in IDLE_CHOICES:
+            raise ValueError("invalid idle time")
+        return v
+
+    @field_validator("retention_days")
+    @classmethod
+    def _valid_retention(cls, v: int) -> int:
+        if not 1 <= v <= 3650:
+            raise ValueError("retention must be between 1 and 3650 days")
+        return v
 
 
 class DiskMount(BaseModel):

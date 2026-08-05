@@ -21,7 +21,24 @@ PATH_ENV_VARS = (
     "PNAS_GEN_CONF",
     "PNAS_FSTAB",
     "PNAS_SYSTEMD_DIR",
+    "PNAS_LOG_DB",
+    "PNAS_SMARTD_CONF",
+    "PNAS_HD_IDLE_CONF",
+    "PNAS_PVE_STORAGE",
+    "PNAS_UPDATEDB_CONF",
+    "PNAS_CRON_DIR",
 )
+
+
+@pytest.fixture(autouse=True)
+def no_monitor(monkeypatch):
+    """Keep the background loop out of the tests.
+
+    TestClient's context manager runs the app's lifespan, so without this
+    every API test would start the monitor and it would shell out to lsblk
+    and hdparm against the machine running the suite.
+    """
+    monkeypatch.setenv("PNAS_DISABLE_MONITOR", "1")
 
 
 @pytest.fixture
@@ -33,6 +50,12 @@ def sandbox(tmp_path, monkeypatch):
         "PNAS_GEN_CONF": tmp_path / "samba" / "generated.conf",
         "PNAS_FSTAB": tmp_path / "fstab",
         "PNAS_SYSTEMD_DIR": tmp_path / "systemd",
+        "PNAS_LOG_DB": tmp_path / "log" / "disk-events.db",
+        "PNAS_SMARTD_CONF": tmp_path / "smartd.conf",
+        "PNAS_HD_IDLE_CONF": tmp_path / "hd-idle",
+        "PNAS_PVE_STORAGE": tmp_path / "storage.cfg",
+        "PNAS_UPDATEDB_CONF": tmp_path / "updatedb.conf",
+        "PNAS_CRON_DIR": tmp_path / "cron.d",
     }
     for name, path in paths.items():
         monkeypatch.setenv(name, str(path))

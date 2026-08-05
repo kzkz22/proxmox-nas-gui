@@ -21,6 +21,8 @@ EXPECTED_KEYS = {
     "pools",
     "disk_mounts",
     "bind_mounts",
+    "disk_sleep",
+    "disk_sleep_settings",
 }
 
 FIXTURE = Path(__file__).parent / "fixtures" / "state_v1.json"
@@ -59,6 +61,7 @@ def test_stored_state_is_reported(auth_client, sandbox):
     assert set(body["disk_mounts"]) == {"d1", "d2"}
     assert set(body["bind_mounts"]) == {"kz-fontos", "kz-nemfontos"}
     assert body["settings"]["workgroup"] == "HOMELAB"
+    assert body["disk_sleep"]["ata-TOSHIBA_DT01ACA300_334401VAS"]["idle_seconds"] == 1800
 
 
 def test_pools_are_reported_with_live_mount_state(auth_client, sandbox):

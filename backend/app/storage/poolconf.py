@@ -110,18 +110,19 @@ def remove_line(fstab: str, kind: str, name: str) -> str:
 SYSTEM_MOUNTPOINTS = ("/", "/boot", "/boot/efi")
 
 
-def _contains_system_mount(dev: dict) -> bool:
+def contains_system_mount(dev: dict) -> bool:
     """True if dev or any descendant is mounted on the running OS itself.
 
     Used to exclude the whole Proxmox system disk (and every partition/LVM
     volume on it) from the candidate list, not just the mounted leaf - so it
     never shows up as either mountable or formattable, even indirectly via
-    an LVM volume group.
+    an LVM volume group. Public because sleepconf applies the same rule to
+    keep the system disk out of the spin-down list.
     """
     mp = dev.get("mountpoint")
     if mp in SYSTEM_MOUNTPOINTS or (mp or "").startswith("/boot/"):
         return True
-    return any(_contains_system_mount(child) for child in dev.get("children") or [])
+    return any(contains_system_mount(child) for child in dev.get("children") or [])
 
 
 def parse_lsblk(output: str) -> List[dict]:
@@ -162,7 +163,7 @@ def parse_lsblk(output: str) -> List[dict]:
         })
 
     for dev in data.get("blockdevices", []):
-        if _contains_system_mount(dev):
+        if contains_system_mount(dev):
             continue
         walk(dev, "")
     return result

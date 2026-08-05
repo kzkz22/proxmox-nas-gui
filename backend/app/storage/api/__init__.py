@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import binds, disks, pools
+from . import binds, disks, pools, sleep
 
 # Bare routers; app/routes.py applies the session dependency.
-routers: list[APIRouter] = [pools.router, disks.router, binds.router]
+routers: list[APIRouter] = [pools.router, disks.router, binds.router, sleep.router]
