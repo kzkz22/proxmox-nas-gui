@@ -1,7 +1,7 @@
 """Wiring tests for the disk format/mount endpoints.
 
 Filesystem/subprocess-touching pools.* functions are stubbed out here (as
-no_systemd stubs _systemctl in test_pools_api.py) so these exercise only the
+no_systemd stubs systemctl in test_pools_api.py) so these exercise only the
 endpoint's validation and state/fstab persistence, not real mount/mkfs calls.
 """
 
@@ -41,7 +41,7 @@ MOUNTABLE_DEVICE = {
 
 @pytest.fixture
 def no_systemd(monkeypatch):
-    monkeypatch.setattr(pool_ops, "_systemctl", lambda *args: True)
+    monkeypatch.setattr(pool_ops, "systemctl", lambda *args: True)
 
 
 @pytest.fixture

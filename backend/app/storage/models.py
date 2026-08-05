@@ -10,12 +10,26 @@ CREATE_POLICIES = ("mfs", "epmfs", "ff", "pfrd", "rand", "lus", "lfs", "eplfs", 
 # fstab is whitespace-delimited, so paths and options written there must not
 # contain spaces; newlines would inject extra fstab entries.
 UNSAFE_FSTAB_CHARS = re.compile(r"[\s\x00,]")
+# A path that ends up inside a systemd unit's ExecStart= goes through the unit
+# file parser first: % starts a specifier expansion, and quotes/backslashes are
+# unescaped before the command line is split. None of that is wanted in a
+# mountpoint, so they are rejected rather than escaped.
+UNSAFE_UNIT_CHARS = re.compile(r"""[%"'\\$;`]""")
 
 
 def _fstab_safe_abs_path(v: str) -> str:
     if not v.startswith("/") or UNSAFE_FSTAB_CHARS.search(v) or ":" in v:
         raise ValueError(f"invalid path for fstab: {v}")
     return v.rstrip("/") or "/"
+
+
+def _unit_safe_abs_path(v: str) -> str:
+    v = _fstab_safe_abs_path(v)
+    if UNSAFE_UNIT_CHARS.search(v):
+        raise ValueError(f"invalid path for a systemd unit: {v}")
+    if v == "/":
+        raise ValueError("path cannot be /")
+    return v
 
 
 class BranchMode(str, Enum):
@@ -99,6 +113,44 @@ class Pool(BaseModel):
                 raise ValueError(
                     f"branch and mountpoint may not contain each other: {b.path}"
                 )
+        return self
+
+
+class BindMount(BaseModel):
+    """One entry of the presentation tree: `source` shown at `target`.
+
+    The point of a bind mount here is to decouple what the users browse over
+    Samba from where the bytes actually live - a ZFS dataset and a mergerfs
+    pool can appear as two sibling folders of the same share.
+    """
+
+    name: str
+    source: str
+    target: str
+    read_only: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def _valid_name(cls, v: str) -> str:
+        if not POOL_NAME_RE.match(v):
+            raise ValueError("invalid bind mount name")
+        return v
+
+    @field_validator("source", "target")
+    @classmethod
+    def _valid_path(cls, v: str) -> str:
+        return _unit_safe_abs_path(v)
+
+    @model_validator(mode="after")
+    def _no_nesting(self) -> "BindMount":
+        if self.source == self.target:
+            raise ValueError("source and target must differ")
+        # Binding a directory into itself, or into something below itself,
+        # produces a mount loop rather than an error message.
+        if (self.target + "/").startswith(self.source + "/") or (
+            self.source + "/"
+        ).startswith(self.target + "/"):
+            raise ValueError("source and target may not contain each other")
         return self
 
 

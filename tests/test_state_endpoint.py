@@ -20,6 +20,7 @@ EXPECTED_KEYS = {
     "service",
     "pools",
     "disk_mounts",
+    "bind_mounts",
 }
 
 FIXTURE = Path(__file__).parent / "fixtures" / "state_v1.json"
@@ -56,6 +57,7 @@ def test_stored_state_is_reported(auth_client, sandbox):
     assert set(body["groups"]) == {"family"}
     assert set(body["pools"]) == {"media"}
     assert set(body["disk_mounts"]) == {"d1", "d2"}
+    assert set(body["bind_mounts"]) == {"kz-fontos", "kz-nemfontos"}
     assert body["settings"]["workgroup"] == "HOMELAB"
 
 

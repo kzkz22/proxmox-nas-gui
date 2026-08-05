@@ -13,7 +13,7 @@ from typing import Dict
 from pydantic import BaseModel, Field
 
 from .samba.models import GlobalSettings, GroupInfo, Share, UserInfo
-from .storage.models import DiskMount, Pool
+from .storage.models import BindMount, DiskMount, Pool
 
 
 class State(BaseModel):
@@ -24,3 +24,4 @@ class State(BaseModel):
     shares: Dict[str, Share] = Field(default_factory=dict)
     pools: Dict[str, Pool] = Field(default_factory=dict)
     disk_mounts: Dict[str, DiskMount] = Field(default_factory=dict)
+    bind_mounts: Dict[str, BindMount] = Field(default_factory=dict)
