@@ -1,4 +1,5 @@
 # Proxmox NAS GUI
+AI kódolással készült / AI generated code!
 
 Unraid-stílusú SMB (Samba) megosztás- és **mergerfs pool**-kezelő webes
 felület Proxmox VE-hez. *(English summary below.)*
