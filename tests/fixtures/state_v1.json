@@ -110,6 +110,11 @@
     "enabled": true,
     "poll_seconds": 30,
     "default_idle_seconds": 0,
-    "retention_days": 90
+    "retention_days": 90,
+    "temp_enabled": true,
+    "temp_interval_seconds": 300,
+    "temp_retention_days": 365,
+    "temp_warn_celsius": 45,
+    "temp_crit_celsius": 55
   }
 }

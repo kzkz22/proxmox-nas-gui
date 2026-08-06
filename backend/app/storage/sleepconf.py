@@ -15,6 +15,7 @@ The two signals this module parses are deliberately the cheap ones:
 """
 
 import json
+import math
 import re
 import shlex
 from typing import Dict, List, Optional, Tuple
@@ -411,3 +412,84 @@ def path_is_covered(paths: List[str], target: str) -> bool:
         if target == root or target.startswith(root + "/"):
             return True
     return False
+
+
+# --- temperature ------------------------------------------------------------
+
+# A drive that reports outside this range is reporting nonsense, not weather.
+# The low end is the important one: see parse_smart_temperature.
+TEMP_MIN_CELSIUS = 1
+TEMP_MAX_CELSIUS = 120
+
+
+def parse_smart_temperature(output: str) -> Optional[int]:
+    """`smartctl -j` output -> degrees Celsius, or None when there is no reading.
+
+    None rather than a number in every doubtful case, because the caller
+    writes what it gets into a history that is later averaged and charted, and
+    a fabricated sample is worse there than a gap.
+
+    The trap this exists for: a drive in standby still produces a JSON
+    document, and its temperature.current is frequently **0** rather than
+    absent. Recording that would put a 0 degrees Celsius reading into the
+    history of a disk that was merely asleep, which then drags every average
+    down and draws a cliff on the chart. Zero is therefore treated as "no
+    reading" - a spinning disk is never at freezing point, and a drive that
+    genuinely is would have bigger problems than this chart.
+    """
+    try:
+        data = json.loads(output or "")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    value = (data.get("temperature") or {}).get("current")
+    if value is None:
+        # NVMe reports the same number in its own section; some smartctl
+        # versions fill only one of the two.
+        value = (data.get("nvme_smart_health_information_log") or {}).get("temperature")
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+
+    celsius = int(value)
+    if celsius < TEMP_MIN_CELSIUS or celsius > TEMP_MAX_CELSIUS:
+        return None
+    return celsius
+
+
+def smart_said_standby(output: str) -> bool:
+    """Whether smartctl declined to wake the drive.
+
+    Not used to decide anything - the caller already skips sleeping disks -
+    but it separates "asleep, as expected" from "smartctl cannot read this
+    device", which is worth telling the user apart.
+    """
+    try:
+        data = json.loads(output or "")
+    except json.JSONDecodeError:
+        return False
+    messages = (data.get("smartctl") or {}).get("messages") or []
+    return any("STANDBY" in str(m.get("string", "")).upper() for m in messages)
+
+
+def temperature_level(celsius: int, warn: int, crit: int) -> str:
+    """ok / warn / crit, for colouring a reading."""
+    if celsius >= crit:
+        return "crit"
+    if celsius >= warn:
+        return "warn"
+    return "ok"
+
+
+def bucket_seconds(window_seconds: int, target_points: int) -> int:
+    """How wide an averaging bucket has to be to keep a series small.
+
+    A year of five-minute samples is 105k points per disk. Nobody can see
+    that many, and no browser should be asked to. Rounded up to a whole
+    number of minutes so bucket boundaries land on clock times.
+    """
+    if window_seconds <= 0 or target_points <= 0:
+        return 60
+    raw = window_seconds / target_points
+    return max(60, int(math.ceil(raw / 60.0)) * 60)

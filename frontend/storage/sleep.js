@@ -2,6 +2,7 @@ import { api, guard } from "../core/api.js";
 import { confirmDialog } from "../core/dialog.js";
 import { $, esc, humanSize, toast, view } from "../core/dom.js";
 import { t } from "../core/i18n.js";
+import { diskLabel, seriesStyle, temperatureChart, wireChart } from "./tempchart.js";
 
 /** The disk sleep page: two tabs behind one route.
  *
@@ -26,15 +27,21 @@ let logFilters = { disk: "", event: "", reason: "", text: "", offset: 0 };
 
 export async function sleepPage() {
   stopIo();
-  const isLog = location.hash.startsWith("#/sleep/log");
+  const tab = location.hash.startsWith("#/sleep/log") ? "log"
+    : location.hash.startsWith("#/sleep/temps") ? "temps" : "disks";
+  const link = (id, href, key) =>
+    `<a href="${href}" class="${tab === id ? "active" : ""}">${esc(t(key))}</a>`;
   view().innerHTML = `
     <div class="page-head"><h1>${esc(t("sleep.title"))}</h1></div>
     <div class="tabs">
-      <a href="#/sleep" class="${isLog ? "" : "active"}">${esc(t("sleep.tabDisks"))}</a>
-      <a href="#/sleep/log" class="${isLog ? "active" : ""}">${esc(t("sleep.tabLog"))}</a>
+      ${link("disks", "#/sleep", "sleep.tabDisks")}
+      ${link("temps", "#/sleep/temps", "sleep.tabTemps")}
+      ${link("log", "#/sleep/log", "sleep.tabLog")}
     </div>
     <div id="sleep-body">${esc(t("common.loading"))}</div>`;
-  if (isLog) await renderLog(); else await renderDisks();
+  if (tab === "log") await renderLog();
+  else if (tab === "temps") await renderTemps();
+  else await renderDisks();
 }
 
 /* ---------------------------------------------------------------- disks -- */
@@ -77,7 +84,7 @@ async function renderDisks() {
         </tr>`).join("")}</tbody></table>
       </div>` : ""}
     <div class="panel" id="sleep-settings" style="margin-top:1.2rem">
-      ${settingsForm(data.settings, data.idle_choices)}
+      ${settingsForm(data.settings, data.idle_choices, data.ssd_offset)}
     </div>`;
 
   wireDisks();
@@ -113,6 +120,7 @@ function diskCard(d, choices) {
         <span class="badge ${d.asleep ? "sleeping" : "awake"}">● ${esc(t(d.asleep ? "sleep.stateAsleep" : "sleep.stateAwake"))}</span>
         ${d.since ? `<span class="since">${esc(t("sleep.since", { time: duration(nowSeconds() - d.since) }))}</span>` : ""}
         ${d.state === "unknown" ? `<span class="since">${esc(t("sleep.stateUnknown"))}</span>` : ""}
+        ${tempBadge(d.temperature)}
         <span class="io" data-io="${esc(d.by_id)}" data-io-asleep="${d.asleep ? "1" : "0"}"></span>
       </div>
     </div>
@@ -129,6 +137,18 @@ function diskCard(d, choices) {
     </div>
     ${d.warnings.length ? warningsHtml(d) : ""}
   </div>`;
+}
+
+/** The card's temperature. A sleeping disk keeps its last known reading with
+ *  the age attached: "22 °C · 3 órája" says far more than a dash, and the age
+ *  is what stops it being read as live. */
+function tempBadge(temp) {
+  if (!temp || temp.celsius === null) return "";
+  const age = nowSeconds() - temp.temp_at;
+  const stale = age > 900;
+  return `<span class="temp ${esc(temp.level)}${stale ? " stale" : ""}">
+    ${temp.celsius} °C${stale ? ` <span class="temp-age">· ${esc(duration(age))}</span>` : ""}
+  </span>`;
 }
 
 function timelineHtml(segments) {
@@ -355,7 +375,7 @@ function rate(bytesPerSecond) {
 
 /* ------------------------------------------------------------- settings -- */
 
-function settingsForm(settings, choices) {
+function settingsForm(settings, choices, ssdOffset = 20) {
   return `<h2 style="margin-top:0">${esc(t("sleep.settingsTitle"))}</h2>
     <div class="field"><label class="check">
       <input type="checkbox" id="set-enabled" ${settings.enabled ? "checked" : ""}>
@@ -373,6 +393,29 @@ function settingsForm(settings, choices) {
       <select id="set-retention">${[30, 90, 180, 365].map((v) =>
         `<option value="${v}" ${v === settings.retention_days ? "selected" : ""}>${v} ${esc(t("sleep.daysWord"))}</option>`).join("")}</select>
       <div class="hint">${esc(t("sleep.settingRetentionHint"))}</div></div>
+    <h2>${esc(t("sleep.tabTemps"))}</h2>
+    <div class="field"><label class="check">
+      <input type="checkbox" id="set-temp" ${settings.temp_enabled ? "checked" : ""}>
+      ${esc(t("sleep.settingTempEnabled"))}</label>
+      <div class="hint">${esc(t("sleep.settingTempEnabledHint"))}</div></div>
+    <div class="field"><label>${esc(t("sleep.settingTempInterval"))}</label>
+      <select id="set-temp-interval">${[300, 600, 900, 1800].map((v) =>
+        `<option value="${v}" ${v === settings.temp_interval_seconds ? "selected" : ""}
+          >${v / 60} ${esc(t("sleep.minutesWord"))}</option>`).join("")}</select></div>
+    <div class="field"><label>${esc(t("sleep.settingTempRetention"))}</label>
+      <select id="set-temp-retention">${[90, 180, 365, 730].map((v) =>
+        `<option value="${v}" ${v === settings.temp_retention_days ? "selected" : ""}
+          >${v} ${esc(t("sleep.daysWord"))}</option>`).join("")}</select>
+      <div class="hint">${esc(t("sleep.settingTempRetentionHint"))}</div></div>
+    <div class="field-row">
+      <div class="field" style="margin:0"><label>${esc(t("sleep.settingTempWarn"))}</label>
+        <select id="set-temp-warn">${[35, 40, 45, 50].map((v) =>
+          `<option value="${v}" ${v === settings.temp_warn_celsius ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+      <div class="field" style="margin:0"><label>${esc(t("sleep.settingTempCrit"))}</label>
+        <select id="set-temp-crit">${[50, 55, 60, 65].map((v) =>
+          `<option value="${v}" ${v === settings.temp_crit_celsius ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    </div>
+    <div class="hint">${esc(t("sleep.settingTempThresholdHint", { offset: ssdOffset }))}</div>
     <div class="actions"><span class="spacer"></span>
       <button class="primary" id="save-settings">${esc(t("common.save"))}</button></div>`;
 }
@@ -387,9 +430,98 @@ function wireSettings(settings) {
         poll_seconds: Number($("#set-poll").value),
         default_idle_seconds: Number($("#set-default").value),
         retention_days: Number($("#set-retention").value),
+        temp_enabled: $("#set-temp").checked,
+        temp_interval_seconds: Number($("#set-temp-interval").value),
+        temp_retention_days: Number($("#set-temp-retention").value),
+        temp_warn_celsius: Number($("#set-temp-warn").value),
+        temp_crit_celsius: Number($("#set-temp-crit").value),
       },
     }));
     toast(t("common.saved"), "ok");
+  };
+}
+
+/* ---------------------------------------------------------- temperature -- */
+
+/** Kept across re-renders, like the log filters. */
+let tempWindow = "24h";
+let tempDisk = "";
+
+async function renderTemps() {
+  const box = $("#sleep-body");
+  let current, history;
+  try {
+    const params = new URLSearchParams({ window: tempWindow });
+    if (tempDisk) params.set("disk", tempDisk);
+    [current, history] = await Promise.all([
+      api("/sleep/temps"),
+      api(`/sleep/temps/history?${params}`),
+    ]);
+  } catch (e) {
+    box.textContent = e.message;
+    return;
+  }
+  if (!box) return;
+
+  // The colour order comes from the full disk list, never from the filtered
+  // subset: narrowing to one disk must not repaint the others.
+  const order = current.disks.map((d) => ({ by_id: d.by_id, model: d.model }));
+  const windows = ["24h", "7d", "30d", "1y"];
+
+  box.innerHTML = `
+    <div class="panel summary">
+      ${current.disks.map((d) => `<div class="stat">
+        <span class="k">${esc(diskLabel(d.by_id, d.model))}${d.system ? ` · ${esc(t("temp.systemDisk"))}` : ""}</span>
+        <span class="v${d.level && d.level !== "ok" ? " " + esc(d.level) : ""}">
+          ${d.celsius === null ? "—" : `${d.celsius} °C`}</span>
+      </div>`).join("")}
+    </div>
+
+    <div class="panel filters">
+      <div class="field"><label>${esc(t("temp.window"))}</label>
+        <div class="radio-group">${windows.map((w) => `
+          <label><input type="radio" name="tw" value="${w}" ${w === tempWindow ? "checked" : ""}>
+            ${esc(t("temp.window." + w))}</label>`).join("")}</div></div>
+      <div class="field"><label>${esc(t("sleep.filterDisk"))}</label>
+        <select id="t-disk"><option value="">${esc(t("sleep.filterAll"))}</option>
+          ${order.map((d) => `<option value="${esc(d.by_id)}" ${d.by_id === tempDisk ? "selected" : ""}
+            >${esc(diskLabel(d.by_id, d.model))}</option>`).join("")}
+        </select></div>
+      <span class="spacer"></span>
+      <button id="t-csv">${esc(t("temp.csv"))}</button>
+    </div>
+
+    <div class="panel" id="t-chart">${temperatureChart(history, order)}</div>
+
+    <h2>${esc(t("temp.statsTitle", { window: t("temp.window." + tempWindow) }))}</h2>
+    ${Object.keys(history.stats).length ? `<table><thead><tr>
+        <th>${esc(t("sleep.colDisk"))}</th><th>${esc(t("temp.min"))}</th>
+        <th>${esc(t("temp.avg"))}</th><th>${esc(t("temp.max"))}</th>
+        <th>${esc(t("temp.samples"))}</th></tr></thead>
+      <tbody>${order.filter((d) => history.stats[d.by_id]).map((d, i) => {
+        const s = history.stats[d.by_id];
+        const style = seriesStyle(order.findIndex((o) => o.by_id === d.by_id));
+        return `<tr>
+          <td><i class="swatch" style="background:${style.color}"></i>
+            ${esc(diskLabel(d.by_id, d.model))}</td>
+          <td class="num">${s.min} °C</td><td class="num">${s.avg} °C</td>
+          <td class="num">${s.max} °C</td><td class="num">${s.samples}</td>
+        </tr>`;
+      }).join("")}</tbody></table>`
+      : `<div class="empty">${esc(t("temp.chartEmpty"))}</div>`}
+    <div class="matrix-note" style="margin-top:.7rem">${esc(t("temp.gapNote"))}</div>`;
+
+  wireChart($("#t-chart"), history, order);
+  box.querySelectorAll('input[name="tw"]').forEach((r) =>
+    r.addEventListener("change", () => { tempWindow = r.value; renderTemps(); }));
+  $("#t-disk").addEventListener("change", (ev) => {
+    tempDisk = ev.target.value;
+    renderTemps();
+  });
+  $("#t-csv").onclick = () => {
+    const params = new URLSearchParams({ window: tempWindow, format: "csv" });
+    if (tempDisk) params.set("disk", tempDisk);
+    window.location.href = `/api/sleep/temps/history?${params}`;
   };
 }
 

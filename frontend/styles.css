@@ -341,3 +341,54 @@ td .badge { white-space: nowrap; }
 .spark-w { fill: var(--accent); fill-opacity: .75; }
 .spark-mid { stroke: var(--border); stroke-width: 1; }
 .spark-tip { fill: var(--io-read); }
+
+/* --- temperature --------------------------------------------------------- */
+
+/* Status colours, not series colours: these say "state", and are never reused
+   to identify a disk on the chart. */
+.temp { font-size: .8rem; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.temp.warn { color: #ffc42f; }
+.temp.crit { color: var(--danger); font-weight: 600; }
+/* A reading from before the last sampling round is the last known value of a
+   sleeping disk, not a live one - dimmed, and always shown with its age. */
+.temp.stale { opacity: .6; font-weight: 400; }
+.temp-age { color: var(--text-dim); }
+
+.stat .v.crit { color: var(--danger); }
+
+.chart-wrap { position: relative; }
+/* Scales uniformly with the panel; a non-uniform fit would stretch every
+   glyph in the chart horizontally. */
+.chart { width: 100%; height: auto; display: block; }
+.c-grid { stroke: var(--border); stroke-width: 1; }
+.c-tick { fill: var(--text-dim); font-size: 11px; }
+.c-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.c-line.dashed { stroke-dasharray: 7 4; }
+.c-end { font-size: 11px; font-weight: 600; }
+.c-thr { stroke-width: 1; stroke-dasharray: 4 4; }
+.c-thr.warn { stroke: #ffc42f; }
+.c-thr.crit { stroke: var(--danger); }
+.c-thr-label { font-size: 10px; letter-spacing: .04em; }
+.c-thr-label.warn { fill: #ffc42f; }
+.c-thr-label.crit { fill: var(--danger); }
+.c-cross { stroke: var(--text-dim); stroke-width: 1; stroke-dasharray: 3 3; }
+.c-hit { cursor: crosshair; }
+
+.chart-tip {
+  position: absolute; top: .5rem; pointer-events: none; z-index: 5;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: .45rem .6rem; font-size: .8rem; min-width: 11rem;
+}
+.chart-tip .tip-time { color: var(--text-dim); margin-bottom: .3rem; }
+.chart-tip .tip-row { display: flex; align-items: center; gap: .4rem; }
+.chart-tip .tip-row b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.chart-tip .tip-name { color: var(--text-dim); }
+.chart-tip i, .legend i, .swatch {
+  width: .6rem; height: .6rem; border-radius: 2px; display: inline-block; flex: 0 0 auto;
+}
+.legend i.dashed { background-image: linear-gradient(90deg, rgba(0,0,0,.55) 40%, transparent 40%); }
+.swatch { margin-right: .45rem; vertical-align: baseline; }
+
+.legend { display: flex; flex-wrap: wrap; gap: .2rem 1rem; margin-top: .7rem;
+          font-size: .82rem; color: var(--text-dim); }
+.legend-item { display: inline-flex; align-items: center; gap: .35rem; }

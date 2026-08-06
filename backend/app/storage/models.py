@@ -9,6 +9,10 @@ POOL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,30}$")
 # closed set rather than a free number: these are the choices the dropdown
 # shows, and anything else arriving over the API is a client bug.
 IDLE_CHOICES = (0, 900, 1800, 2700, 3600, 7200, 10800, 14400, 18000, 21600)
+# A device that does not spin runs hotter as a matter of course: 60 C is
+# unremarkable for an NVMe and alarming for a platter drive. Rather than a
+# second pair of settings, the one pair is shifted for those.
+TEMP_SSD_OFFSET = 20
 MINFREESPACE_RE = re.compile(r"^\d+[KMGT]?$")
 CREATE_POLICIES = ("mfs", "epmfs", "ff", "pfrd", "rand", "lus", "lfs", "eplfs", "epff")
 # fstab is whitespace-delimited, so paths and options written there must not
@@ -191,6 +195,17 @@ class DiskSleepSettings(BaseModel):
     default_idle_seconds: int = 0
     retention_days: int = 90
 
+    # Temperature sampling. Its own retention, deliberately longer than the
+    # event log's: a year of readings is a few megabytes and makes summer
+    # comparable with winter, while a year of event rows is just a long list.
+    temp_enabled: bool = True
+    temp_interval_seconds: int = 300
+    temp_retention_days: int = 365
+    # The usual upper half of the healthy range for a spinning disk. Applied
+    # with an offset for devices that do not spin - see TEMP_SSD_OFFSET.
+    temp_warn_celsius: int = 45
+    temp_crit_celsius: int = 55
+
     @field_validator("poll_seconds")
     @classmethod
     def _valid_poll(cls, v: int) -> int:
@@ -205,12 +220,32 @@ class DiskSleepSettings(BaseModel):
             raise ValueError("invalid idle time")
         return v
 
-    @field_validator("retention_days")
+    @field_validator("retention_days", "temp_retention_days")
     @classmethod
     def _valid_retention(cls, v: int) -> int:
         if not 1 <= v <= 3650:
             raise ValueError("retention must be between 1 and 3650 days")
         return v
+
+    @field_validator("temp_interval_seconds")
+    @classmethod
+    def _valid_temp_interval(cls, v: int) -> int:
+        if not 60 <= v <= 3600:
+            raise ValueError("temperature interval must be between 60 and 3600 seconds")
+        return v
+
+    @field_validator("temp_warn_celsius", "temp_crit_celsius")
+    @classmethod
+    def _valid_threshold(cls, v: int) -> int:
+        if not 20 <= v <= 100:
+            raise ValueError("threshold must be between 20 and 100 degrees")
+        return v
+
+    @model_validator(mode="after")
+    def _thresholds_ordered(self) -> "DiskSleepSettings":
+        if self.temp_crit_celsius <= self.temp_warn_celsius:
+            raise ValueError("the critical threshold must be above the warning one")
+        return self
 
 
 class DiskMount(BaseModel):

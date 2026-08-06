@@ -16,7 +16,7 @@ fi
 
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 
-echo "==> Installing packages (samba, python3-venv, openssl, e2fsprogs, xfsprogs, fdisk, udev, wsdd2, hdparm, sg3-utils, sdparm)"
+echo "==> Installing packages (samba, python3-venv, openssl, e2fsprogs, xfsprogs, fdisk, udev, wsdd2, hdparm, sg3-utils, sdparm, smartmontools)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 # wsdd2, not wsdd: the original Python wsdd was dropped from Debian's
@@ -26,9 +26,12 @@ apt-get update -qq
 # hdparm, sg3-utils and sdparm are all three needed, not alternatives: hdparm
 # speaks ATA STANDBY IMMEDIATE, which plenty of drives (and every USB/SAS
 # bridge) ignore, sg_start speaks SCSI START STOP UNIT, and sdparm is the last
-# resort. The disk sleep page tries them in that order per disk.
+# resort. The disk sleep page tries them in that order per disk. smartmontools
+# supplies smartctl, which reads drive temperatures and which the smartd check
+# already assumed was present - true on Proxmox VE, where it ships by default,
+# but not on a plain Debian host or in an LXC container.
 apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g e2fsprogs \
-    xfsprogs fdisk udev wsdd2 hdparm sg3-utils sdparm
+    xfsprogs fdisk udev wsdd2 hdparm sg3-utils sdparm smartmontools
 
 echo "==> Copying application to ${INSTALL_DIR}"
 mkdir -p "$INSTALL_DIR"
