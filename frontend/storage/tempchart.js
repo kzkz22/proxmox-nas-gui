@@ -33,12 +33,12 @@ export function seriesStyle(index) {
   };
 }
 
-/** Short disk label: the model is what people recognise, the by-id name is
- *  what the machine uses. Falls back to the tail of the by-id name. */
+/** Disk label: the model alone doesn't identify a disk - two drives of the
+ *  same model differ only in the serial number carried by the by-id name,
+ *  so the full by-id name is always shown alongside it (as on the other
+ *  storage screens), never just the model. */
 export function diskLabel(byId, model) {
-  if (model) return model;
-  const parts = byId.split("_");
-  return parts[parts.length - 1] || byId;
+  return model ? `${model} (${byId})` : byId;
 }
 
 function shortLabel(byId, model) {
