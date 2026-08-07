@@ -228,7 +228,11 @@ td .ds { display: block; font-size: .72rem; color: var(--accent); }
 .summary { display: flex; gap: 2.2rem; flex-wrap: wrap; padding: .9rem 1.3rem; margin-bottom: 1rem; }
 .stat { display: flex; flex-direction: column; gap: .1rem; }
 .stat .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 600; }
-.stat .v { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* The by-id line: a disk's model doesn't identify it on its own (two drives
+   of the same model differ only in serial), so it sits under the model name
+   whenever there is one, in the same dim monospace used elsewhere for it. */
+.stat .id { font-family: ui-monospace, "Cascadia Code", monospace; font-size: .74rem; color: var(--text-dim); margin-bottom: .15rem; }
+.stat .v { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stat .v.warn { color: #ffc42f; }
 .stat .v small { font-size: .8rem; font-weight: 500; color: var(--text-dim); }
 
@@ -355,6 +359,14 @@ td .badge { white-space: nowrap; }
 .temp-age { color: var(--text-dim); }
 
 .stat .v.crit { color: var(--danger); }
+
+/* Disk identity in the stats table: name and by-id stacked, so the swatch
+   stays pinned to the first line instead of drifting to the block's middle. */
+.disk-cell { display: flex; align-items: flex-start; gap: .5rem; }
+.disk-cell .swatch { margin: .35rem 0 0; }
+.disk-cell .txt { display: flex; flex-direction: column; gap: .1rem; }
+.disk-cell .name { font-weight: 600; }
+.disk-cell .id { font-family: ui-monospace, "Cascadia Code", monospace; font-size: .78rem; color: var(--text-dim); }
 
 .chart-wrap { position: relative; }
 /* Scales uniformly with the panel; a non-uniform fit would stretch every
