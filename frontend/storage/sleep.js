@@ -2,7 +2,7 @@ import { api, guard } from "../core/api.js";
 import { confirmDialog } from "../core/dialog.js";
 import { $, esc, humanSize, toast, view } from "../core/dom.js";
 import { t } from "../core/i18n.js";
-import { diskLabel, seriesStyle, temperatureChart, wireChart } from "./tempchart.js";
+import { diskLabel, diskLabelParts, seriesStyle, temperatureChart, wireChart } from "./tempchart.js";
 
 /** The disk sleep page: two tabs behind one route.
  *
@@ -470,11 +470,18 @@ async function renderTemps() {
 
   box.innerHTML = `
     <div class="panel summary">
-      ${current.disks.map((d) => `<div class="stat">
-        <span class="k">${esc(diskLabel(d.by_id, d.model))}${d.system ? ` · ${esc(t("temp.systemDisk"))}` : ""}</span>
+      ${current.disks.map((d) => {
+        const { name, id } = diskLabelParts(d.by_id, d.model);
+        const sys = d.system ? esc(t("temp.systemDisk")) : "";
+        const idLine = id || sys
+          ? `<span class="id">${esc(id)}${id && sys ? " · " : ""}${sys}</span>` : "";
+        return `<div class="stat">
+        <span class="k">${esc(name)}</span>
+        ${idLine}
         <span class="v${d.level && d.level !== "ok" ? " " + esc(d.level) : ""}">
           ${d.celsius === null ? "—" : `${d.celsius} °C`}</span>
-      </div>`).join("")}
+      </div>`;
+      }).join("")}
     </div>
 
     <div class="panel filters">
@@ -501,9 +508,12 @@ async function renderTemps() {
       <tbody>${order.filter((d) => history.stats[d.by_id]).map((d, i) => {
         const s = history.stats[d.by_id];
         const style = seriesStyle(order.findIndex((o) => o.by_id === d.by_id));
+        const { name, id } = diskLabelParts(d.by_id, d.model);
         return `<tr>
-          <td><i class="swatch" style="background:${style.color}"></i>
-            ${esc(diskLabel(d.by_id, d.model))}</td>
+          <td><div class="disk-cell">
+            <i class="swatch" style="background:${style.color}"></i>
+            <span class="txt"><span class="name">${esc(name)}</span>${id ? `<span class="id">${esc(id)}</span>` : ""}</span>
+          </div></td>
           <td class="num">${s.min} °C</td><td class="num">${s.avg} °C</td>
           <td class="num">${s.max} °C</td><td class="num">${s.samples}</td>
         </tr>`;

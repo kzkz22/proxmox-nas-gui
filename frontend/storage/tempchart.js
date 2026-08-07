@@ -36,9 +36,18 @@ export function seriesStyle(index) {
 /** Disk label: the model alone doesn't identify a disk - two drives of the
  *  same model differ only in the serial number carried by the by-id name,
  *  so the full by-id name is always shown alongside it (as on the other
- *  storage screens), never just the model. */
+ *  storage screens), never just the model. Single-line form, for spots
+ *  that can't lay out two lines (a <select> option, an SVG <text>, the
+ *  aria-label). */
 export function diskLabel(byId, model) {
   return model ? `${model} (${byId})` : byId;
+}
+
+/** Same identity, split for a two-line layout: model on top, full by-id
+ *  underneath in a dimmer, smaller line. No id line when there's no model
+ *  to distinguish it from - the name already is the by-id then. */
+export function diskLabelParts(byId, model) {
+  return { name: model || byId, id: model ? byId : "" };
 }
 
 function shortLabel(byId, model) {
