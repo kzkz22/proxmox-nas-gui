@@ -8,13 +8,12 @@ another share on the user.
 """
 
 import os
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ...core import fsops, state as state_store
+from ...core import state as state_store
 from ...core.deps import blockers_for_path, shares_containing_path
 from ...models import State
 from .. import bindconf, binds, pools
@@ -100,26 +99,6 @@ def _require_no_conflict(
     reason = _conflict(st, bind, ignore, siblings)
     if reason:
         raise HTTPException(409, reason)
-
-
-def _create_source(bind: BindMount) -> None:
-    """Create the source directory, as a ZFS dataset when it belongs in one.
-
-    A dataset rather than a plain directory whenever the parent is one, so
-    the per-folder snapshots and quotas people set up ZFS for stay possible.
-
-    Ownership/mode are then set the same way a share root gets them (see
-    fsops.apply_share_perms): a plain mkdir is root:root 0755, which Samba's
-    "force user = nobody" can list but not write into - so without this a
-    freshly (re)created presentation folder would look empty and read-only
-    to every client even though the mount succeeded.
-    """
-    if os.path.isdir(bind.source):
-        return
-    source = Path(bind.source)
-    parent = str(source.parent)
-    fsops.make_dir(parent, source.name, dataset=parent in fsops.zfs_datasets())
-    fsops.apply_share_perms(bind.source)
 
 
 def _empty_folder_warning(st: State, bind: BindMount) -> Optional[str]:
@@ -215,7 +194,7 @@ def create_binds(body: BulkRequest):
         warnings: List[str] = []
         for bind in body.binds:
             if body.create_sources:
-                _create_source(bind)
+                binds.create_source(bind)
             st.bind_mounts[bind.name] = bind
             warning = _apply(st, bind)
             if warning:
@@ -232,7 +211,7 @@ def create_bind(bind: BindMount, create_source: bool = False):
             raise HTTPException(409, "bind mount already exists")
         _require_no_conflict(st, bind)
         if create_source:
-            _create_source(bind)
+            binds.create_source(bind)
         st.bind_mounts[bind.name] = bind
         warning = _apply(st, bind)
         state_store.save_state(st)
@@ -260,7 +239,7 @@ def update_bind(name: str, bind: BindMount, create_source: bool = False):
         # place.
         binds.unmount_bind(old)
         if create_source:
-            _create_source(bind)
+            binds.create_source(bind)
         st.bind_mounts[name] = bind
         warning = _apply(st, bind)
         state_store.save_state(st)

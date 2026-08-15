@@ -1,0 +1,77 @@
+{
+  "nav.diag": "Diagnostics",
+
+  "diag.title": "Diagnostics",
+  "diag.runAll": "Run all checks",
+  "diag.running": "Checking...",
+  "diag.lastRun": "Last run",
+  "diag.empty": "No problems found - everything looks fine.",
+  "diag.statCrit": "Critical",
+  "diag.statWarn": "Warning",
+  "diag.statInfo": "Informational",
+  "diag.runFix": "Fix",
+  "diag.copyCommand": "Copy command",
+  "diag.copied": "Copied to clipboard",
+  "diag.fixConfirm": "Apply this fix?",
+
+  "diagcat.pools": "Pools",
+  "diagcat.binds": "Bind mounts",
+  "diagcat.shares": "Shares",
+  "diagcat.mounts": "Disk mounts",
+  "diagcat.units": "Systemd units",
+  "diagcat.disks": "Disk sleep",
+
+  "diagfinding.pool_branch_missing.title": "Pool “{pool}” has an unreachable branch: {path}",
+  "diagfinding.pool_branch_missing.body": "{path} does not exist or is not a directory. This disk may have been removed from the machine, or is not mounted. While this stands, the pool runs without this branch - the folders on it disappear from the pool's view, even though nothing was actually deleted.",
+
+  "diagfinding.pool_not_mounted.title": "Pool “{pool}” is not mounted",
+  "diagfinding.pool_not_mounted.body": "The pool is configured but not currently reachable at {mountpoint}. Every bind mount and share behind it is unreachable while this is the case.",
+  "diagfinding.pool_not_mounted.confirm": "Pool “{pool}” will be mounted. Continue?",
+
+  "diagfinding.bind_source_missing.title": "Bind mount “{bind}”'s source does not exist: {path}",
+  "diagfinding.bind_source_missing.body": "The directory {path} is missing. It is created the same way as recreating a missing source from the editor: as a new ZFS dataset when the parent is one, otherwise as a plain directory, then given the standard share permissions (nobody:nogroup, 0777).",
+  "diagfinding.bind_source_missing.confirm": "The missing source directory will be created (owned nobody:nogroup, mode 0777). Continue?",
+
+  "diagfinding.bind_source_wrong_perms.title": "Bind mount “{bind}”'s source has the wrong ownership",
+  "diagfinding.bind_source_wrong_perms.body": "{path} is not owned nobody:nogroup with mode 0777. With Samba's “force user = nobody”, that means clients can list the folder but cannot write into it - exactly what happened the last time a missing bind source was recreated.",
+  "diagfinding.bind_source_wrong_perms.confirm": "The source's owner will be set to nobody:nogroup and its mode to 0777. Continue?",
+
+  "diagfinding.bind_not_mounted.title": "Bind mount “{bind}” is not mounted",
+  "diagfinding.bind_not_mounted.body": "The source exists, but the bind mount is not currently mounted at {target}, so users would see an empty folder there.",
+  "diagfinding.bind_not_mounted.confirm": "This bind mount will be mounted. Continue?",
+
+  "diagfinding.bind_source_single_branch.title": "“{bind}” currently exists on only one disk of pool “{pool}”",
+  "diagfinding.bind_source_single_branch.body": "It lives on branch {branch} and nowhere else in the pool - mergerfs only places a newly created folder on one branch. Removing that disk from the pool right now would make this folder - and everything the bind mount shows through it - disappear from the union view, even though nothing would actually be deleted.",
+
+  "diagfinding.share_path_missing.title": "Share “{share}”'s path does not exist: {path}",
+  "diagfinding.share_path_missing.body": "{path} does not exist or is not a directory. Check that the backing pool/disk is mounted before recreating the folder - blindly creating the missing path on the root filesystem would hide the real mount failure underneath it.",
+
+  "diagfinding.share_wrong_perms.title": "Share “{share}” has the wrong ownership",
+  "diagfinding.share_wrong_perms.body": "{path} is not owned nobody:nogroup with mode 0777. With Samba's “force user = nobody”, that means clients can list the folder but cannot write into it.",
+  "diagfinding.share_wrong_perms.confirm": "The share's owner will be set to nobody:nogroup and its mode to 0777. Continue?",
+
+  "diagfinding.share_unknown_user.title": "Share “{share}” references a user that no longer exists: {user}",
+  "diagfinding.share_unknown_user.body": "“{user}” appears in the share's access list but is no longer among the users. Edit the share to remove or replace the reference.",
+
+  "diagfinding.share_unknown_group.title": "Share “{share}” references a group that no longer exists: {group}",
+  "diagfinding.share_unknown_group.body": "“{group}” appears in the share's access list but is no longer among the groups. Edit the share to remove or replace the reference.",
+
+  "diagfinding.disk_mount_uuid_missing.title": "Disk mount “{name}”'s UUID cannot be found: {uuid}",
+  "diagfinding.disk_mount_uuid_missing.body": "No block device currently carries this UUID - the disk may have been removed, replaced, or reformatted. Check the disk before changing anything in the configuration.",
+
+  "diagfinding.disk_mount_not_mounted.title": "Disk mount “{name}” is not mounted",
+  "diagfinding.disk_mount_not_mounted.body": "The disk is configured but not currently reachable at {mountpoint}.",
+  "diagfinding.disk_mount_not_mounted.confirm": "This disk will be mounted. Continue?",
+
+  "diagfinding.pool_unit_missing.title": "Pool “{pool}”'s systemd unit is missing",
+  "diagfinding.pool_unit_missing.body": "The pool is configured in the app, but its systemd unit file is not on disk, so it will not mount automatically on the next boot.",
+  "diagfinding.pool_unit_missing.confirm": "The systemd unit will be rewritten, and the pool mounted if it isn't already. Continue?",
+
+  "diagfinding.pool_unit_drift.title": "Pool “{pool}”'s systemd unit does not match its current settings",
+  "diagfinding.pool_unit_drift.body": "The unit file on disk does not match what the pool's current settings would generate - someone may have hand-edited it, or an earlier save was never applied. While this stands, the next restart mounts the pool with the old settings.",
+  "diagfinding.pool_unit_drift.confirm": "The systemd unit will be rewritten to match the current settings. Continue?",
+
+  "diagfinding.bind_unit_missing.title": "Bind mount “{bind}”'s systemd unit is missing",
+  "diagfinding.bind_unit_missing.body": "The bind mount is configured in the app, but its systemd unit file is not on disk, so it will not mount automatically on the next boot.",
+  "diagfinding.bind_unit_missing.confirm": "The systemd unit will be rewritten, and the bind mount mounted if it isn't already. Continue?"
+}

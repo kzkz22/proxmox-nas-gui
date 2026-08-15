@@ -11,7 +11,6 @@ import os
 
 import pytest
 
-from app.core import fsops
 from app.storage import binds as bind_ops
 from app.storage import pools as pool_ops
 
@@ -36,24 +35,6 @@ def stub_mount(monkeypatch):
     calls = []
     monkeypatch.setattr(bind_ops, "mount_bind", lambda bind: calls.append(bind.name))
     monkeypatch.setattr(bind_ops, "unmount_bind", lambda bind: None)
-    return calls
-
-
-@pytest.fixture
-def stub_chown(monkeypatch):
-    """Replace the chown half of apply_share_perms with a recorder.
-
-    Ownership changes to a *different* user require root - the real app runs
-    as root, but the test runner does not, so a live chown would fail here
-    for a reason that has nothing to do with what these tests check. chmod on
-    a file the test process already owns needs no such privilege, so that
-    half still runs for real.
-    """
-    calls = []
-    monkeypatch.setattr(
-        fsops.shutil, "chown",
-        lambda path, user=None, group=None: calls.append((str(path), user, group)),
-    )
     return calls
 
 

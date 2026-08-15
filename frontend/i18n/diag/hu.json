@@ -1,0 +1,77 @@
+{
+  "nav.diag": "Diagnosztika",
+
+  "diag.title": "Diagnosztika",
+  "diag.runAll": "Ellenőrzés futtatása",
+  "diag.running": "Ellenőrzés...",
+  "diag.lastRun": "Utolsó futtatás",
+  "diag.empty": "Nincs probléma - minden rendben.",
+  "diag.statCrit": "Kritikus",
+  "diag.statWarn": "Figyelmeztetés",
+  "diag.statInfo": "Tájékoztató",
+  "diag.runFix": "Javítás",
+  "diag.copyCommand": "Parancs másolása",
+  "diag.copied": "Másolva a vágólapra",
+  "diag.fixConfirm": "Alkalmazzuk ezt a javítást?",
+
+  "diagcat.pools": "Poolok",
+  "diagcat.binds": "Bind mountok",
+  "diagcat.shares": "Megosztások",
+  "diagcat.mounts": "Lemez csatolások",
+  "diagcat.units": "Systemd egységek",
+  "diagcat.disks": "Lemezalvás",
+
+  "diagfinding.pool_branch_missing.title": "A(z) „{pool}” pool egyik branch-e nem érhető el: {path}",
+  "diagfinding.pool_branch_missing.body": "A(z) {path} útvonal nem létezik vagy nem könyvtár. Ez a lemez lehet, hogy kikerült a gépből, vagy nincs csatolva. Amíg ez fennáll, a pool ezen branch nélkül fut - a rajta lévő mappák eltűnnek a pool nézetéből, holott ténylegesen semmi nem törlődött.",
+
+  "diagfinding.pool_not_mounted.title": "A(z) „{pool}” pool nincs csatolva",
+  "diagfinding.pool_not_mounted.body": "A pool konfigurálva van, de jelenleg nem érhető el a(z) {mountpoint} útvonalon. Minden mögötte lévő bind mount és megosztás elérhetetlen, amíg ez fennáll.",
+  "diagfinding.pool_not_mounted.confirm": "Csatoljuk a(z) „{pool}” poolt. Folytatod?",
+
+  "diagfinding.bind_source_missing.title": "A(z) „{bind}” bind mount forrása nem létezik: {path}",
+  "diagfinding.bind_source_missing.body": "A(z) {path} könyvtár hiányzik. Ugyanúgy jön létre, mint a szerkesztőben a hiányzó forrás pótlásakor: ZFS dataset-ként, ha a szülő is az, egyébként sima könyvtárként, a megosztási jogosultságokkal (nobody:nogroup, 0777).",
+  "diagfinding.bind_source_missing.confirm": "Létrehozzuk a hiányzó forrásmappát (nobody:nogroup, 0777 jogokkal). Folytatod?",
+
+  "diagfinding.bind_source_wrong_perms.title": "A(z) „{bind}” bind mount forrása nem a megosztási tulajdonossal rendelkezik",
+  "diagfinding.bind_source_wrong_perms.body": "A(z) {path} nem nobody:nogroup 0777. A Samba „force user = nobody” beállítása mellett ez azt jelenti, hogy a kliensek listázni tudják a mappát, de írni nem - pontosan ez történt egy hiányzó bind forrás legutóbbi pótlásakor.",
+  "diagfinding.bind_source_wrong_perms.confirm": "Beállítjuk a forrás tulajdonosát nobody:nogroup-ra, jogait 0777-re. Folytatod?",
+
+  "diagfinding.bind_not_mounted.title": "A(z) „{bind}” bind mount nincs felcsatolva",
+  "diagfinding.bind_not_mounted.body": "A forrás megvan, de a(z) {target} célon jelenleg nincs felcsatolva a bind mount, így a felhasználók üres mappát látnának ott.",
+  "diagfinding.bind_not_mounted.confirm": "Felcsatoljuk ezt a bind mountot. Folytatod?",
+
+  "diagfinding.bind_source_single_branch.title": "A(z) „{bind}” jelenleg csak egy lemezen létezik a(z) „{pool}” poolban",
+  "diagfinding.bind_source_single_branch.body": "A(z) {branch} branch-en található, a pool többi branch-én nem - a mergerfs egy most létrejövő mappát csak egy branch-re tesz le. Ha most eltávolítanád ezt a lemezt a poolból, ez a mappa - és minden, amit a bind mount rajta keresztül mutat - eltűnne a union nézetből, holott ténylegesen semmi nem törlődne.",
+
+  "diagfinding.share_path_missing.title": "A(z) „{share}” megosztás útvonala nem létezik: {path}",
+  "diagfinding.share_path_missing.body": "A(z) {path} nem létezik vagy nem könyvtár. Ellenőrizd, hogy a mögöttes pool/lemez csatolva van-e, mielőtt a mappát pótolnád - ha csak létrehozod a hiányzó útvonalat a gyökér fájlrendszeren, az elrejtheti a valódi mountolási hibát.",
+
+  "diagfinding.share_wrong_perms.title": "A(z) „{share}” megosztás nem a megosztási tulajdonossal rendelkezik",
+  "diagfinding.share_wrong_perms.body": "A(z) {path} nem nobody:nogroup 0777. A Samba „force user = nobody” beállítása mellett ez azt jelenti, hogy a kliensek listázni tudják a mappát, de írni nem.",
+  "diagfinding.share_wrong_perms.confirm": "Beállítjuk a megosztás tulajdonosát nobody:nogroup-ra, jogait 0777-re. Folytatod?",
+
+  "diagfinding.share_unknown_user.title": "A(z) „{share}” megosztás egy nem létező felhasználót hivatkozik: {user}",
+  "diagfinding.share_unknown_user.body": "A(z) „{user}” felhasználó szerepel a megosztás hozzáférési listáján, de már nincs a felhasználók között. Szerkeszd a megosztást, és vedd ki vagy cseréld le a hivatkozást.",
+
+  "diagfinding.share_unknown_group.title": "A(z) „{share}” megosztás egy nem létező csoportot hivatkozik: {group}",
+  "diagfinding.share_unknown_group.body": "A(z) „{group}” csoport szerepel a megosztás hozzáférési listáján, de már nincs a csoportok között. Szerkeszd a megosztást, és vedd ki vagy cseréld le a hivatkozást.",
+
+  "diagfinding.disk_mount_uuid_missing.title": "A(z) „{name}” lemez-csatolás UUID-ja nem található: {uuid}",
+  "diagfinding.disk_mount_uuid_missing.body": "Egyik jelenlegi blokkeszköz sem hordozza ezt az UUID-t - a lemez lehet, hogy ki lett húzva, cserélve, vagy újraformázva. Ellenőrizd a lemezt, mielőtt bármit módosítanál a konfiguráción.",
+
+  "diagfinding.disk_mount_not_mounted.title": "A(z) „{name}” lemez-csatolás nincs felcsatolva",
+  "diagfinding.disk_mount_not_mounted.body": "A lemez konfigurálva van, de jelenleg nem érhető el a(z) {mountpoint} útvonalon.",
+  "diagfinding.disk_mount_not_mounted.confirm": "Felcsatoljuk ezt a lemezt. Folytatod?",
+
+  "diagfinding.pool_unit_missing.title": "A(z) „{pool}” pool systemd egysége hiányzik",
+  "diagfinding.pool_unit_missing.body": "A pool konfigurálva van az alkalmazásban, de a hozzá tartozó systemd egység fájl nincs a lemezen, ezért újraindításkor nem fog automatikusan csatolódni.",
+  "diagfinding.pool_unit_missing.confirm": "Újraírjuk a systemd egységet, és felcsatoljuk a poolt, ha még nincs. Folytatod?",
+
+  "diagfinding.pool_unit_drift.title": "A(z) „{pool}” pool systemd egysége eltér a jelenlegi beállításoktól",
+  "diagfinding.pool_unit_drift.body": "A lemezen lévő egység fájl tartalma nem egyezik azzal, amit a jelenlegi pool-beállítások generálnának - valaki kézzel szerkesztette, vagy egy korábbi mentés nem lett alkalmazva. Amíg ez fennáll, a következő újraindítás a régi beállításokkal csatolja fel a poolt.",
+  "diagfinding.pool_unit_drift.confirm": "Újraírjuk a systemd egységet a jelenlegi beállítások szerint. Folytatod?",
+
+  "diagfinding.bind_unit_missing.title": "A(z) „{bind}” bind mount systemd egysége hiányzik",
+  "diagfinding.bind_unit_missing.body": "A bind mount konfigurálva van az alkalmazásban, de a hozzá tartozó systemd egység fájl nincs a lemezen, ezért újraindításkor nem fog automatikusan felcsatolódni.",
+  "diagfinding.bind_unit_missing.confirm": "Újraírjuk a systemd egységet, és felcsatoljuk a bind mountot, ha még nincs. Folytatod?"
+}
