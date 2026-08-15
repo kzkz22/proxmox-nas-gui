@@ -684,3 +684,17 @@ def test_only_the_passthrough_fix_is_marked_as_changing_config():
     assert diag.mutates_state("pool_passthrough_available") is True
     assert diag.mutates_state("pool_needs_remount") is False
     assert diag.mutates_state("pool_not_mounted") is False
+
+
+def test_remount_fix_rewrites_the_unit_before_mounting(tmp_path, monkeypatch):
+    # Remounting starts the systemd unit, so a stale unit on disk would be
+    # reapplied verbatim. Order matters, and it must not depend on the user
+    # pressing pool_unit_drift first.
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(tmp_path / "d1"))
+    calls = []
+    monkeypatch.setattr(pool_ops, "write_pool_unit", lambda p: calls.append("write"))
+    monkeypatch.setattr(pool_ops, "remount_pool", lambda p: calls.append("remount"))
+
+    diag.apply_fix(State(pools={"bulk": pool}), "pool_needs_remount", "bulk")
+
+    assert calls == ["write", "remount"]

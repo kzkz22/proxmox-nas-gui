@@ -381,9 +381,20 @@ def _restart_binds_on(state: State, pool_name: str) -> List[str]:
 
 
 def _remount_pool(state: State, entity: str) -> str:
+    """Rewrite the unit, then remount through it.
+
+    The rewrite is not redundant: mount_pool starts the systemd unit, so a
+    remount runs whatever options are on disk. If the unit file is also stale
+    - which is the normal state right after an upgrade that changed the
+    generated options - remounting without rewriting first would faithfully
+    reapply the old settings and report success. That would make this fix
+    depend on pool_unit_drift being pressed first, an ordering nothing in the
+    UI expresses.
+    """
     pool = state.pools.get(entity)
     if not pool:
         raise SystemOpError(f"no such pool: {entity}")
+    pool_ops.write_pool_unit(pool)
     pool_ops.remount_pool(pool)
     restarted = _restart_binds_on(state, entity)
     detail = f"pool {entity} remounted"
