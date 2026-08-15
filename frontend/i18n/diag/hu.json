@@ -28,6 +28,9 @@
   "diagfinding.pool_not_mounted.body": "A pool konfigurálva van, de jelenleg nem érhető el a(z) {mountpoint} útvonalon. Minden mögötte lévő bind mount és megosztás elérhetetlen, amíg ez fennáll.",
   "diagfinding.pool_not_mounted.confirm": "Csatoljuk a(z) „{pool}” poolt. Folytatod?",
 
+  "diagfinding.pool_cache_files_off.title": "A(z) „{pool}” pool gyorsítótár nélkül (cache.files=off) fut",
+  "diagfinding.pool_cache_files_off.body": "Ebben a módban a mergerfs direct_io-val dolgozik: nincs kernel lapgyorsítótár, és nincs osztott mmap támogatás sem. Két látható következménye van. Az mmap-ot használó programok (qBittorrent/libtorrent 2.x, sqlite-alapú alkalmazások) hibára futnak, vagy kénytelenek lassabb módra váltani. Az apró darabokban író programok pedig minden egyes írásért külön oda-vissza utat fizetnek a mergerfs folyamat felé, ezért az írási sebesség a lemez képességének töredékére eshet. Ha nem kifejezetten a RAM-fogyasztás miatt választottad, állítsd a pool szerkesztőjében a fájl gyorsítótárat „auto-full”-ra.",
+
   "diagfinding.bind_source_missing.title": "A(z) „{bind}” bind mount forrása nem létezik: {path}",
   "diagfinding.bind_source_missing.body": "A(z) {path} könyvtár hiányzik. Ugyanúgy jön létre, mint a szerkesztőben a hiányzó forrás pótlásakor: ZFS dataset-ként, ha a szülő is az, egyébként sima könyvtárként, a megosztási jogosultságokkal (nobody:nogroup, 0777).",
   "diagfinding.bind_source_missing.confirm": "Létrehozzuk a hiányzó forrásmappát (nobody:nogroup, 0777 jogokkal). Folytatod?",

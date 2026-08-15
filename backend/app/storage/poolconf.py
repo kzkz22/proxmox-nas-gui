@@ -25,6 +25,26 @@ MOUNTABLE_EXCLUDE_FSTYPES = {
 def mergerfs_options(pool: Pool) -> str:
     """Build the mergerfs `-o` option string.
 
+    The three cache options are spelled out even when they match mergerfs's
+    own defaults, because they are the settings that decide write throughput
+    and they are worth reading straight off the generated unit file:
+
+      cache.files      whether the kernel page cache is used at all. With
+                       "off" mergerfs runs in direct_io mode - no page cache,
+                       no shared mmap, and every I/O is its own round trip
+                       into the mergerfs process. Anything that writes in
+                       small pieces (a torrent client filling a file 16 KiB
+                       at a time) pays that cost per piece.
+      cache.writeback  lets the kernel accumulate those small writes in the
+                       page cache and hand mergerfs one large request
+                       instead. Without it FUSE writes through: a 16 KiB
+                       write from the application stays a 16 KiB write.
+                       Requires cache.files to be enabled.
+      dropcacheonclose drops a file's cached pages when it is closed. Saves
+                       RAM (the data would otherwise sit in both mergerfs's
+                       and the branch filesystem's cache) at the cost of
+                       throwing away cache a re-reader would have used.
+
     Options are merged by key rather than concatenated: if extra_options
     sets a key the GUI also sets (e.g. cache.files), the extra_options
     value wins instead of producing a duplicate `key=value` pair, which
@@ -32,8 +52,9 @@ def mergerfs_options(pool: Pool) -> str:
     """
     defaults = [
         "allow_other",
-        "cache.files=off",
-        "dropcacheonclose=true",
+        f"cache.files={pool.cache_files}",
+        f"cache.writeback={'true' if pool.cache_writeback else 'false'}",
+        f"dropcacheonclose={'true' if pool.dropcacheonclose else 'false'}",
         f"category.create={pool.create_policy}",
         f"minfreespace={pool.minfreespace}",
         f"moveonenospc={'true' if pool.moveonenospc else 'false'}",

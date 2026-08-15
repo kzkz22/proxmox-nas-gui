@@ -58,6 +58,37 @@ def test_pool_not_mounted_is_a_fixable_warning(tmp_path, monkeypatch):
     assert findings[0]["fixable"] is True
 
 
+def test_cache_files_off_is_flagged(tmp_path):
+    branch = tmp_path / "d1"
+    branch.mkdir()
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
+    pool.cache_files = "off"
+    st = State(pools={"bulk": pool})
+
+    findings = diag._pool_checks(st)
+
+    assert [f["id"] for f in findings] == ["pool_cache_files_off"]
+    assert (findings[0]["severity"], findings[0]["fixable"]) == ("warn", False)
+
+
+def test_cache_files_off_via_extra_options_is_flagged_too(tmp_path):
+    branch = tmp_path / "d1"
+    branch.mkdir()
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
+    pool.extra_options = "cache.files=off"
+    st = State(pools={"bulk": pool})
+
+    assert [f["id"] for f in diag._pool_checks(st)] == ["pool_cache_files_off"]
+
+
+def test_default_cache_settings_are_not_flagged(tmp_path):
+    branch = tmp_path / "d1"
+    branch.mkdir()
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
+
+    assert diag._pool_checks(State(pools={"bulk": pool})) == []
+
+
 def test_a_fully_healthy_pool_has_no_findings(tmp_path):
     branch = tmp_path / "d1"
     branch.mkdir()

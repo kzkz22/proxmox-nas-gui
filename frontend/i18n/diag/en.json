@@ -28,6 +28,9 @@
   "diagfinding.pool_not_mounted.body": "The pool is configured but not currently reachable at {mountpoint}. Every bind mount and share behind it is unreachable while this is the case.",
   "diagfinding.pool_not_mounted.confirm": "Pool “{pool}” will be mounted. Continue?",
 
+  "diagfinding.pool_cache_files_off.title": "Pool “{pool}” runs without a page cache (cache.files=off)",
+  "diagfinding.pool_cache_files_off.body": "In this mode mergerfs works in direct_io: no kernel page cache, and no shared mmap support either. That has two visible consequences. Programs that use mmap (qBittorrent/libtorrent 2.x, sqlite-based applications) fail outright or fall back to a slower mode. And programs that write in small pieces pay a separate round trip into the mergerfs process for every single write, which can drop write throughput to a fraction of what the disk can do. Unless you chose this specifically to keep RAM use down, set the file page cache to “auto-full” in the pool editor.",
+
   "diagfinding.bind_source_missing.title": "Bind mount “{bind}”'s source does not exist: {path}",
   "diagfinding.bind_source_missing.body": "The directory {path} is missing. It is created the same way as recreating a missing source from the editor: as a new ZFS dataset when the parent is one, otherwise as a plain directory, then given the standard share permissions (nobody:nogroup, 0777).",
   "diagfinding.bind_source_missing.confirm": "The missing source directory will be created (owned nobody:nogroup, mode 0777). Continue?",

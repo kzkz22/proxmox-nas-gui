@@ -81,6 +81,14 @@ def _pool_checks(state: State) -> List[dict]:
                 {"pool": name, "mountpoint": pool.mountpoint},
                 command=f"systemctl start {poolconf.pool_unit_name(name)}",
             ))
+        # Reported off the effective option string rather than the field, so
+        # a cache.files=off typed into extra_options is caught too - that is
+        # how the setting usually ends up back on after being changed.
+        if "cache.files=off" in poolconf.mergerfs_options(pool):
+            out.append(_finding(
+                "pool_cache_files_off", "pools", name, "warn", False,
+                {"pool": name, "mountpoint": pool.mountpoint},
+            ))
     return out
 
 

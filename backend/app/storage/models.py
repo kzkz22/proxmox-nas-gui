@@ -15,6 +15,14 @@ IDLE_CHOICES = (0, 900, 1800, 2700, 3600, 7200, 10800, 14400, 18000, 21600)
 TEMP_SSD_OFFSET = 20
 MINFREESPACE_RE = re.compile(r"^\d+[KMGT]?$")
 CREATE_POLICIES = ("mfs", "epmfs", "ff", "pfrd", "rand", "lus", "lfs", "eplfs", "epff")
+# mergerfs cache.files modes. "off" forces direct_io: every read and write
+# crosses into the mergerfs process one call at a time, the kernel page cache
+# is bypassed entirely, and shared mmap stops working (FUSE cannot do it
+# without page caching), which breaks any application that memory-maps its
+# files - qBittorrent/libtorrent 2.x and sqlite3-based apps among them. It is
+# the right choice only when RAM is tight enough that double caching hurts
+# more than the lost throughput does, so it is offered but not the default.
+CACHE_FILES_MODES = ("off", "partial", "full", "auto-full", "per-process")
 # fstab is whitespace-delimited, so paths and options written there must not
 # contain spaces; newlines would inject extra fstab entries.
 UNSAFE_FSTAB_CHARS = re.compile(r"[\s\x00,]")
@@ -63,6 +71,9 @@ class Pool(BaseModel):
     create_policy: str = "mfs"
     minfreespace: str = "4G"
     moveonenospc: bool = True
+    cache_files: str = "auto-full"
+    cache_writeback: bool = False
+    dropcacheonclose: bool = False
     extra_options: str = ""
 
     @field_validator("name")
@@ -93,6 +104,21 @@ class Pool(BaseModel):
         if not MINFREESPACE_RE.match(v):
             raise ValueError("invalid minfreespace")
         return v
+
+    @field_validator("cache_files")
+    @classmethod
+    def _valid_cache_files(cls, v: str) -> str:
+        if v not in CACHE_FILES_MODES:
+            raise ValueError("invalid cache.files mode")
+        return v
+
+    @model_validator(mode="after")
+    def _writeback_needs_caching(self) -> "Pool":
+        # The kernel writeback cache sits on top of the page cache, so it is
+        # not merely useless without one - mergerfs refuses the combination.
+        if self.cache_writeback and self.cache_files == "off":
+            raise ValueError("cache.writeback requires cache.files other than off")
+        return self
 
     @field_validator("extra_options")
     @classmethod

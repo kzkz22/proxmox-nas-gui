@@ -10,6 +10,7 @@ import json
 import pytest
 
 from app.storage import pools as pool_ops
+from app.storage.models import Branch, Pool
 
 POOL = {
     "name": "media",
@@ -157,3 +158,47 @@ def test_removing_a_branch_does_not_warn_when_the_folder_survives(
 
     assert response.status_code == 200
     assert response.json()["warning"] is None
+
+
+# --- remount-only options -----------------------------------------------
+
+def make_pool(**kwargs) -> Pool:
+    return Pool(name="media", mountpoint="/mnt/pool/media",
+                branches=[Branch(path="/mnt/disks/d1")], **kwargs)
+
+
+def test_changing_writeback_warns_that_a_remount_is_needed():
+    # cache.writeback is negotiated when the FUSE connection is set up, so a
+    # save cannot apply it to a running pool - saying nothing would leave the
+    # user benchmarking a setting they are not actually running.
+    warning = pool_ops.remount_only_warning(
+        make_pool(cache_writeback=True), make_pool(), "/nonexistent/.mergerfs"
+    )
+
+    assert warning is not None
+    assert "cache.writeback=true" in warning
+
+
+def test_changed_extra_options_warn_too():
+    warning = pool_ops.remount_only_warning(
+        make_pool(extra_options="func.getattr=newest"), make_pool(),
+        "/nonexistent/.mergerfs",
+    )
+
+    assert warning is not None
+    assert "func.getattr=newest" in warning
+
+
+def test_untouched_options_do_not_warn():
+    # A save that leaves the remount-only fields alone has nothing to report,
+    # however they happen to be set - otherwise every single save of a pool
+    # with extra options would nag.
+    pool = make_pool(cache_writeback=True, extra_options="func.getattr=newest")
+
+    assert pool_ops.remount_only_warning(pool, pool, "/nonexistent/.mergerfs") is None
+
+
+def test_runtime_update_on_an_unmounted_pool_is_a_no_op(monkeypatch):
+    monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: False)
+
+    assert pool_ops.runtime_update(make_pool(cache_writeback=True), make_pool()) is None
