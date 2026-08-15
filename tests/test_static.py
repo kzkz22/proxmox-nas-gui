@@ -44,7 +44,12 @@ def test_scripts_are_served_as_javascript(client):
         ), f"{path} served as {content_type}"
 
 
-def test_other_assets_are_not_forced_to_revalidate(client):
-    """Only the HTML entry point is special-cased; hashless assets keep the
-    default handling."""
-    assert "cache-control" not in client.get("/styles.css").headers
+def test_app_assets_are_revalidated(client):
+    """Markup, scripts, styles and i18n bundles all change together on an
+    upgrade and none of them is fingerprinted, so a browser must not serve
+    any of them from cache without asking. Stale i18n is the quiet case: the
+    page renders, but strings added in the upgrade show as raw keys."""
+    for path in ("/index.html", "/main.js", "/styles.css", "/i18n/core/hu.json"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert response.headers.get("cache-control") == "no-cache", path

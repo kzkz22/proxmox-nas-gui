@@ -25,6 +25,20 @@ def make_pool(name, mountpoint, *branches) -> Pool:
 
 
 @pytest.fixture(autouse=True)
+def systemd_dir(tmp_path, monkeypatch):
+    """Point unit writing at a temp directory for every test in this file.
+
+    Autouse rather than per-test on purpose: several fixes here write a pool
+    unit, and a test that forgot to redirect this would write into the real
+    /etc/systemd/system - silently succeeding for anyone running the suite as
+    root, and failing on CI. Which is exactly what happened once.
+    """
+    path = tmp_path / "systemd"
+    path.mkdir(exist_ok=True)
+    monkeypatch.setenv("PNAS_SYSTEMD_DIR", str(path))
+
+
+@pytest.fixture(autouse=True)
 def always_mounted(monkeypatch):
     """Most checks care about filesystem facts, not real mounts - default to
     "everything is mounted" so is_mounted noise does not leak into checks
@@ -314,8 +328,6 @@ def test_disk_mount_present_and_mounted_is_not_flagged(monkeypatch):
 # --- units --------------------------------------------------------------
 
 def test_pool_unit_missing_is_crit_and_fixable(tmp_path, monkeypatch):
-    monkeypatch.setenv("PNAS_SYSTEMD_DIR", str(tmp_path / "systemd"))
-    (tmp_path / "systemd").mkdir()
     branch = tmp_path / "d1"
     branch.mkdir()
     pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
@@ -330,8 +342,6 @@ def test_pool_unit_missing_is_crit_and_fixable(tmp_path, monkeypatch):
 
 def test_pool_unit_matching_generated_text_is_not_flagged(tmp_path, monkeypatch):
     from app.storage import poolconf
-    monkeypatch.setenv("PNAS_SYSTEMD_DIR", str(tmp_path / "systemd"))
-    (tmp_path / "systemd").mkdir()
     branch = tmp_path / "d1"
     branch.mkdir()
     pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
@@ -343,8 +353,6 @@ def test_pool_unit_matching_generated_text_is_not_flagged(tmp_path, monkeypatch)
 
 def test_pool_unit_drift_is_warn_and_fixable(tmp_path, monkeypatch):
     from app.storage import poolconf
-    monkeypatch.setenv("PNAS_SYSTEMD_DIR", str(tmp_path / "systemd"))
-    (tmp_path / "systemd").mkdir()
     branch = tmp_path / "d1"
     branch.mkdir()
     pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
@@ -359,8 +367,6 @@ def test_pool_unit_drift_is_warn_and_fixable(tmp_path, monkeypatch):
 
 
 def test_bind_unit_missing_is_crit_and_fixable(tmp_path, monkeypatch):
-    monkeypatch.setenv("PNAS_SYSTEMD_DIR", str(tmp_path / "systemd"))
-    (tmp_path / "systemd").mkdir()
     bind = BindMount(name="kz-bulk", source="/mnt/a", target="/mnt/b")
     st = State(bind_mounts={"kz-bulk": bind})
 
@@ -375,8 +381,6 @@ def test_a_hand_edited_bind_unit_is_not_flagged_as_drifted(tmp_path, monkeypatch
     """Bind units are existence-only: bindconf.bind_unit() bakes in the
     live mount_root() answer, which would false-positive whenever the
     backing disk is transiently unmounted at check time."""
-    monkeypatch.setenv("PNAS_SYSTEMD_DIR", str(tmp_path / "systemd"))
-    (tmp_path / "systemd").mkdir()
     bind = BindMount(name="kz-bulk", source="/mnt/a", target="/mnt/b")
     from app.storage import bindconf
     (tmp_path / "systemd" / bindconf.bind_unit_name("kz-bulk")).write_text("# hand-edited\n")
@@ -440,8 +444,6 @@ def test_run_all_sorts_by_severity_then_category_then_entity(tmp_path, monkeypat
 
 
 def test_run_all_is_empty_for_a_fully_healthy_state(tmp_path, monkeypatch):
-    monkeypatch.setenv("PNAS_SYSTEMD_DIR", str(tmp_path / "systemd"))
-    (tmp_path / "systemd").mkdir()
     monkeypatch.setattr(diag.disksleep, "list_sleep_disks", lambda: [])
 
     assert diag.run_all(State()) == []
@@ -486,8 +488,6 @@ def test_apply_fix_creates_a_missing_bind_source(tmp_path, stub_chown):
 
 def test_apply_fix_rewrites_a_drifted_pool_unit(tmp_path, monkeypatch):
     from app.storage import poolconf
-    monkeypatch.setenv("PNAS_SYSTEMD_DIR", str(tmp_path / "systemd"))
-    (tmp_path / "systemd").mkdir()
     branch = tmp_path / "d1"
     branch.mkdir()
     pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
@@ -684,3 +684,17 @@ def test_only_the_passthrough_fix_is_marked_as_changing_config():
     assert diag.mutates_state("pool_passthrough_available") is True
     assert diag.mutates_state("pool_needs_remount") is False
     assert diag.mutates_state("pool_not_mounted") is False
+
+
+def test_remount_fix_rewrites_the_unit_before_mounting(tmp_path, monkeypatch):
+    # Remounting starts the systemd unit, so a stale unit on disk would be
+    # reapplied verbatim. Order matters, and it must not depend on the user
+    # pressing pool_unit_drift first.
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(tmp_path / "d1"))
+    calls = []
+    monkeypatch.setattr(pool_ops, "write_pool_unit", lambda p: calls.append("write"))
+    monkeypatch.setattr(pool_ops, "remount_pool", lambda p: calls.append("remount"))
+
+    diag.apply_fix(State(pools={"bulk": pool}), "pool_needs_remount", "bulk")
+
+    assert calls == ["write", "remount"]
