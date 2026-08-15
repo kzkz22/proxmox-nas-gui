@@ -44,6 +44,14 @@ def test_options_extra_appended():
     )
 
 
+def test_options_extra_overrides_duplicate_key():
+    pool = make_pool(extra_options="cache.files=auto-full")
+    opts = mergerfs_options(pool)
+    assert opts.count("cache.files=") == 1
+    assert "cache.files=auto-full" in opts
+    assert "cache.files=off" not in opts
+
+
 def test_extra_options_rejects_managed_keys():
     for bad in ("fsname=x", "branches=/a:/b", "nofail", "has space=1"):
         with pytest.raises(ValueError):

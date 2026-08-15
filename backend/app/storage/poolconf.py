@@ -23,7 +23,14 @@ MOUNTABLE_EXCLUDE_FSTYPES = {
 
 
 def mergerfs_options(pool: Pool) -> str:
-    opts = [
+    """Build the mergerfs `-o` option string.
+
+    Options are merged by key rather than concatenated: if extra_options
+    sets a key the GUI also sets (e.g. cache.files), the extra_options
+    value wins instead of producing a duplicate `key=value` pair, which
+    mergerfs would otherwise receive verbatim with an ambiguous winner.
+    """
+    defaults = [
         "allow_other",
         "cache.files=off",
         "dropcacheonclose=true",
@@ -32,9 +39,14 @@ def mergerfs_options(pool: Pool) -> str:
         f"moveonenospc={'true' if pool.moveonenospc else 'false'}",
         f"fsname={pool.name}",
     ]
-    if pool.extra_options:
-        opts.append(pool.extra_options)
-    return ",".join(opts)
+    merged: Dict[str, str] = {}
+    order: List[str] = []
+    for opt in defaults + (pool.extra_options.split(",") if pool.extra_options else []):
+        key = opt.split("=", 1)[0]
+        if key not in merged:
+            order.append(key)
+        merged[key] = opt
+    return ",".join(merged[key] for key in order)
 
 
 def branches_spec(pool: Pool) -> str:
