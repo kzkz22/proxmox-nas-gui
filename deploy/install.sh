@@ -33,6 +33,47 @@ apt-get update -qq
 apt-get install -y -qq samba mergerfs python3-venv openssl libpam0g e2fsprogs \
     xfsprogs fdisk udev wsdd2 hdparm sg3-utils sdparm smartmontools
 
+# mergerfs comes from apt above so the system is never left without it, then
+# is upgraded to the upstream release if apt's is older. Debian's package
+# trails upstream by years - bookworm ships 2.33.5 (2021), trixie 2.40.2 - and
+# what is missing matters: passthrough.io, which lets the kernel read and
+# write branch files directly instead of routing every call through the
+# mergerfs process, arrived in 2.41.0. mergerfs's own documentation says to
+# install from the releases page rather than via apt for this reason.
+#
+# Best effort throughout: no network, no build for this distribution, or a
+# failed dpkg all leave apt's version in place and the install continues. A
+# NAS box that cannot reach github should still finish installing.
+MERGERFS_VERSION=2.42.0
+
+install_upstream_mergerfs() {
+    local codename arch url deb installed
+    codename=$( . /etc/os-release && echo "${VERSION_CODENAME:-}" )
+    arch=$(dpkg --print-architecture)
+    installed=$(dpkg-query -W -f='${Version}' mergerfs 2>/dev/null || echo 0)
+    if [[ -z "$codename" ]]; then
+        echo "    (unknown distribution codename, keeping apt's mergerfs)"
+        return 0
+    fi
+    # dpkg knows how to compare "2.40.2-5" with "2.42.0"; a string compare
+    # would get the two-digit minor versions wrong.
+    if dpkg --compare-versions "$installed" ge "$MERGERFS_VERSION"; then
+        echo "    (mergerfs ${installed} is already current)"
+        return 0
+    fi
+    url="https://github.com/trapexit/mergerfs/releases/download/${MERGERFS_VERSION}/mergerfs_${MERGERFS_VERSION}.debian-${codename}_${arch}.deb"
+    deb=$(mktemp --suffix=.deb)
+    if wget -q -O "$deb" "$url" && dpkg -i "$deb" >/dev/null; then
+        echo "    (mergerfs ${installed} -> ${MERGERFS_VERSION})"
+    else
+        echo "    (upstream mergerfs ${MERGERFS_VERSION} unavailable for ${codename}/${arch}, keeping ${installed})"
+    fi
+    rm -f "$deb"
+}
+
+echo "==> Checking for a newer upstream mergerfs"
+install_upstream_mergerfs
+
 echo "==> Copying application to ${INSTALL_DIR}"
 mkdir -p "$INSTALL_DIR"
 # cp -r merges into an existing tree, so files deleted or moved since the last

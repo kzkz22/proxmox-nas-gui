@@ -63,6 +63,19 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
 - **Presetek + haladó mező**: create policy (mfs, epmfs, ff, pfrd, …) rövid
   magyarázatokkal, minimális szabad hely, `moveonenospc`, plusz szabad
   szöveges mező bármely további mergerfs opcióhoz
+- **Gyorsítótár-beállítások** külön mezőkön, mert ezek döntik el az írási
+  sebességet: `cache.files` (alapból `auto-full`), `cache.writeback`
+  (kis írások összevonása) és `dropcacheonclose`. A `cache.files=off`
+  direct_io-t jelent — nincs lapgyorsítótár és nincs osztott mmap sem,
+  amitől az mmap-ot használó programok (qBittorrent/libtorrent 2.x,
+  sqlite) hibára futnak, az apró darabokban írók pedig a lemez
+  képességének töredékét hozzák. A Diagnosztika külön figyelmeztet rá,
+  ha egy pool mégis így fut
+- **IO passthrough**: ha a kernel (6.9+) és a mergerfs (2.41+) is tudja, a
+  `passthrough.io` a mergerfs folyamat teljes kihagyásával, közel natív
+  sebességgel olvas/ír. A Diagnosztika észreveszi, ha rendelkezésre áll, és
+  egy gombbal be is kapcsolja — a vele ütköző beállításokat (moveonenospc,
+  írás-összevonás) kikapcsolva és a poolt újracsatolva
 - **Kihasználtsági nézet**: pool- és branch-enkénti (diszkenkénti)
   tárhely-sávok, mint az Unraid Main füle
 - **Élő átkonfigurálás**: felcsatolt pool esetén a branch-lista és a
@@ -232,6 +245,30 @@ aktív swap, és ZFS-gyökér esetén a `findmnt` + `zpool list` alapján
 azonosított pooltagok. Ez utóbbi külön szabály, mert egy `zfs_member`
 partíciónak nincs csatolási pontja, tehát az első kettő nem fogná ki.
 
+### Diagnosztika
+
+Egy gombbal végigfut minden ellenőrzés a poolokon, bind mountokon,
+megosztásokon, diszk-mountokon, systemd egységeken és a lemezalváson. Amit
+biztonságosan meg lehet javítani, azt egy gomb el is végzi (a többinél a
+kimásolható parancs jelenik meg).
+
+A teljesítménnyel kapcsolatos ellenőrzések, mert ezek nem hibaként
+jelentkeznek, hanem csak lassúságként:
+
+- **`cache.files=off`**: a pool gyorsítótár nélkül fut, ami elveszi az mmap
+  támogatást és minden apró írást külön oda-vissza úttá tesz
+- **A futó mount eltér a beállítottól**: néhány mergerfs opciót
+  (írás-összevonás, passthrough) csak felcsatoláskor lehet átvenni, ezért a
+  mentés önmagában nem elég. Ez az ellenőrzés a mergerfs xattr-vezérlőjén
+  keresztül összeveti a *ténylegesen futó* értékeket a mentettekkel — a
+  javítás újracsatolja a poolt, és visszakapcsolja a rá épülő bind
+  mountokat (ezek a pool leállításakor magukkal együtt leállnak)
+- **Elavult mergerfs**: a kernel tudna IO passthrough-t, a telepített
+  mergerfs viszont nem. A disztró csomagja évekkel le szokott maradni
+- **Elérhető IO passthrough**: minden adott hozzá, de a poolon nincs
+  bekapcsolva. A javítás bekapcsolja, kikapcsolja a vele ütközőket
+  (moveonenospc, írás-összevonás), és újracsatol
+
 ## Telepítés
 
 Proxmox VE hoszton (vagy bármely Debian-alapú rendszeren, LXC-ben is), rootként:
@@ -245,6 +282,29 @@ cd proxmox-nas-gui
 Ezután a felület a `https://<hoszt-ip>:8481/` címen érhető el, a belépés a
 hoszt **root** jelszavával történik. (A tanúsítvány önaláírt, a böngésző
 egyszer figyelmeztetni fog.)
+
+A telepítő a mergerfs-t az apt-ból rakja fel, majd — ha a disztró csomagja
+régebbi — felülírja az upstream kiadással. A Debian csomagja évekkel le van
+maradva (bookworm: 2.33.5, trixie: 2.40.2), és ami hiányzik, az számít: a
+`passthrough.io` a 2.41.0-ban jelent meg. A mergerfs saját dokumentációja is
+a releases oldalról való telepítést ajánlja. Ha nincs hálózat, vagy nincs
+build az adott disztróhoz, az apt-os verzió marad és a telepítés folytatódik.
+
+### Frissítés: változás a pool gyorsítótár-alapértékein
+
+Korábban a GUI minden poolt fixen `cache.files=off,dropcacheonclose=true`
+opciókkal csatolt. Ez direct_io-t kényszerít: nincs lapgyorsítótár, és a
+FUSE nem tud osztott mmap-ot sem adni — ezért futott hibára (`ENODEV`)
+minden mmap-ot használó program, és ezért maradt az apró darabokban író
+programok (torrent kliens) írási sebessége a lemez képességének töredékén.
+Az alapértelmezés most `cache.files=auto-full`, `dropcacheonclose=false`,
+`cache.writeback=false`.
+
+A meglévő poolok a mentett beállításaikat tartják meg, de a fenti három
+mezőt még nem tárolták — ezek az új alapértéket kapják, ami a pool
+következő mentésekor vagy újracsatolásakor lép életbe. Ha a régi
+viselkedés kell (pl. nagyon kevés RAM mellett), a pool szerkesztőjében a
+fájl gyorsítótár állítható vissza `off`-ra.
 
 ## Hogyan működik?
 
@@ -384,7 +444,10 @@ partition table gets a single GPT partition first, for compatibility if
 it's ever moved to another machine - with the Proxmox system disk always
 excluded from both lists, build pools from disks/folders with per-branch
 RW/RO/NC modes, create-policy
-presets plus a free-form advanced options field, per-branch usage bars,
+presets plus a free-form advanced options field, page-cache settings
+(`cache.files`, `cache.writeback`, `dropcacheonclose`) and IO passthrough as
+first-class fields because they are what decides write throughput,
+per-branch usage bars,
 live reconfiguration of mounted pools via the mergerfs xattr control
 file, a "create share from this pool" shortcut, and deletion protection
 while shares depend on a pool. Pools are started by generated systemd

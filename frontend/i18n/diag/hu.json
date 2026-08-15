@@ -28,6 +28,20 @@
   "diagfinding.pool_not_mounted.body": "A pool konfigurálva van, de jelenleg nem érhető el a(z) {mountpoint} útvonalon. Minden mögötte lévő bind mount és megosztás elérhetetlen, amíg ez fennáll.",
   "diagfinding.pool_not_mounted.confirm": "Csatoljuk a(z) „{pool}” poolt. Folytatod?",
 
+  "diagfinding.pool_cache_files_off.title": "A(z) „{pool}” pool gyorsítótár nélkül (cache.files=off) fut",
+  "diagfinding.mergerfs_outdated.title": "A telepített mergerfs ({installed}) régebbi, mint amit a kernel kiszolgálna",
+  "diagfinding.mergerfs_outdated.body": "A futó kernel ({kernel}) tudja a FUSE IO passthrough-t, a telepített mergerfs viszont nem — ehhez {needed} vagy újabb kellene. Passthrough alatt a kernel közvetlenül a branch fájljára olvas/ír, a mergerfs folyamat teljes kihagyásával, ami közel natív sebességet ad; enélkül minden olvasás és írás megjárja a mergerfs folyamatot. Ez leginkább az apró darabokban író programokon (torrent kliens) látszik. A disztró csomagja jellemzően évekkel le van maradva; a mergerfs saját dokumentációja is a releases oldalról való telepítést ajánlja az apt helyett. A frissítés után a Diagnosztika fel fogja ajánlani a bekapcsolást, egy gombnyomással.",
+
+  "diagfinding.pool_needs_remount.title": "A(z) „{pool}” pool nem azzal fut, ami be van állítva",
+  "diagfinding.pool_needs_remount.body": "A futó mergerfs ezekben tér el a mentett beállításoktól: {options}. Néhány opciót (írás-összevonás, passthrough) a mergerfs csak felcsatoláskor tud átvenni, ezért a mentés önmagában nem elég — addig a pool a régi beállításokkal megy tovább, és minden mérés a régi állapotot méri. A javítás újracsatolja a poolt, és utána a rá épülő bind mountokat is visszakapcsolja (ezek a pool leállításakor magukkal együtt leállnak).",
+  "diagfinding.pool_needs_remount.confirm": "Újracsatoljuk a(z) „{pool}” poolt, és visszakapcsoljuk a rá épülő bind mountokat. A megosztások néhány másodpercre elérhetetlenné válnak. Folytatod?",
+
+  "diagfinding.pool_passthrough_available.title": "A(z) „{pool}” pool használhatna IO passthrough-t",
+  "diagfinding.pool_passthrough_available.body": "A kernel és a telepített mergerfs is támogatja a FUSE IO passthrough-t, de ezen a poolon nincs bekapcsolva. Bekapcsolva a kernel közvetlenül a branch fájlján olvas és ír, a mergerfs folyamat kihagyásával — ez a legnagyobb elérhető nyereség apró, szétszórt írásoknál. Ára van: a moveonenospc nem működik alatta (a mergerfs nem látja az írásokat, így azt sem, ha egy branch betelik), és az írás-összevonás sem használható mellette. A javítás bekapcsolja a passthrough-t, kikapcsolja azt, amivel ütközik, majd újracsatolja a poolt.",
+  "diagfinding.pool_passthrough_available.confirm": "Bekapcsoljuk a(z) „{pool}” poolon az IO passthrough-t (rw). Ezzel a moveonenospc és az írás-összevonás kikapcsol, és a pool újracsatolódik. Folytatod?",
+
+  "diagfinding.pool_cache_files_off.body": "Ebben a módban a mergerfs direct_io-val dolgozik: nincs kernel lapgyorsítótár, és nincs osztott mmap támogatás sem. Két látható következménye van. Az mmap-ot használó programok (qBittorrent/libtorrent 2.x, sqlite-alapú alkalmazások) hibára futnak, vagy kénytelenek lassabb módra váltani. Az apró darabokban író programok pedig minden egyes írásért külön oda-vissza utat fizetnek a mergerfs folyamat felé, ezért az írási sebesség a lemez képességének töredékére eshet. Ha nem kifejezetten a RAM-fogyasztás miatt választottad, állítsd a pool szerkesztőjében a fájl gyorsítótárat „auto-full”-ra.",
+
   "diagfinding.bind_source_missing.title": "A(z) „{bind}” bind mount forrása nem létezik: {path}",
   "diagfinding.bind_source_missing.body": "A(z) {path} könyvtár hiányzik. Ugyanúgy jön létre, mint a szerkesztőben a hiányzó forrás pótlásakor: ZFS dataset-ként, ha a szülő is az, egyébként sima könyvtárként, a megosztási jogosultságokkal (nobody:nogroup, 0777).",
   "diagfinding.bind_source_missing.confirm": "Létrehozzuk a hiányzó forrásmappát (nobody:nogroup, 0777 jogokkal). Folytatod?",

@@ -135,13 +135,20 @@ export function poolForm(name) {
   const isNew = !name;
   const p = isNew
     ? { name: "", mountpoint: "", branches: [], create_policy: "mfs",
-        minfreespace: "4G", moveonenospc: true, extra_options: "" }
+        minfreespace: "4G", moveonenospc: true, cache_files: "auto-full",
+        cache_writeback: false, dropcacheonclose: false, passthrough: "off",
+        extra_options: "" }
     : S.pools[name];
   if (!p) { location.hash = "#/pools"; return; }
   const branches = p.branches.map((b) => ({ path: b.path, mode: b.mode }));
   const policies = ["mfs", "epmfs", "ff", "pfrd", "rand", "lus", "lfs", "eplfs", "epff"];
   const polOpts = policies.map((v) =>
     `<option value="${v}" ${p.create_policy === v ? "selected" : ""}>${esc(t("policy." + v))}</option>`).join("");
+  const cacheModes = ["auto-full", "full", "partial", "per-process", "off"];
+  const cacheOpts = cacheModes.map((v) =>
+    `<option value="${v}" ${p.cache_files === v ? "selected" : ""}>${esc(t("cache." + v))}</option>`).join("");
+  const ptOpts = ["off", "rw", "ro", "wo"].map((v) =>
+    `<option value="${v}" ${p.passthrough === v ? "selected" : ""}>${esc(t("pt." + v))}</option>`).join("");
   const usageByPath = {};
   (p.branch_usage || []).forEach((bu) => { usageByPath[bu.path] = bu.usage; });
 
@@ -168,6 +175,20 @@ export function poolForm(name) {
       <div class="field"><label class="check">
         <input type="checkbox" name="moveonenospc" ${p.moveonenospc ? "checked" : ""}>
         ${esc(t("pool.moveonenospc"))}</label></div>
+      <div class="field"><label>${esc(t("pool.cacheFiles"))}</label>
+        <select name="cache_files">${cacheOpts}</select>
+        <div class="hint">${esc(t("pool.cacheFilesHint"))}</div></div>
+      <div class="field"><label class="check">
+        <input type="checkbox" name="cache_writeback" ${p.cache_writeback ? "checked" : ""}>
+        ${esc(t("pool.cacheWriteback"))}</label>
+        <div class="hint">${esc(t("pool.cacheWritebackHint"))}</div></div>
+      <div class="field"><label class="check">
+        <input type="checkbox" name="dropcacheonclose" ${p.dropcacheonclose ? "checked" : ""}>
+        ${esc(t("pool.dropcacheonclose"))}</label>
+        <div class="hint">${esc(t("pool.dropcacheoncloseHint"))}</div></div>
+      <div class="field"><label>${esc(t("pool.passthrough"))}</label>
+        <select name="passthrough">${ptOpts}</select>
+        <div class="hint">${esc(t("pool.passthroughHint"))}</div></div>
       <div class="field"><label>${esc(t("pool.extraOptions"))}</label>
         <input type="text" name="extra_options" value="${esc(p.extra_options)}" class="mono">
         <div class="hint">${esc(t("pool.extraHint"))}</div></div>
@@ -216,6 +237,24 @@ export function poolForm(name) {
   }
 
   renderBranches();
+
+  // Two combinations the backend rejects, taken away in the form rather than
+  // left to fail on save: writeback caching needs a page cache underneath it,
+  // and passthrough hands the file to the kernel so neither of the other two
+  // applies. moveonenospc stays editable but is warned about in the hint -
+  // mergerfs cannot honour it under passthrough, and the Diagnostics fix
+  // turns it off for exactly that reason.
+  function syncCacheFields() {
+    const noCache = form.cache_files.value === "off";
+    const pt = form.passthrough.value !== "off";
+    form.cache_writeback.disabled = noCache || pt;
+    if (form.cache_writeback.disabled) form.cache_writeback.checked = false;
+    if (pt && noCache) form.cache_files.value = "auto-full";
+  }
+  form.cache_files.addEventListener("change", syncCacheFields);
+  form.passthrough.addEventListener("change", syncCacheFields);
+  syncCacheFields();
+
   if (isNew) {
     form.name.addEventListener("input", () => {
       if (!form.mountpoint.value || form.mountpoint.dataset.auto !== "0") {
@@ -252,6 +291,10 @@ export function poolForm(name) {
       create_policy: form.create_policy.value,
       minfreespace: form.minfreespace.value.trim(),
       moveonenospc: form.moveonenospc.checked,
+      cache_files: form.cache_files.value,
+      cache_writeback: form.cache_writeback.checked,
+      dropcacheonclose: form.dropcacheonclose.checked,
+      passthrough: form.passthrough.value,
       extra_options: form.extra_options.value.trim(),
     };
     const res = await guard(() =>

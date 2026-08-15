@@ -10,6 +10,7 @@ import json
 import pytest
 
 from app.storage import pools as pool_ops
+from app.storage.models import Branch, Pool
 
 POOL = {
     "name": "media",
@@ -157,3 +158,106 @@ def test_removing_a_branch_does_not_warn_when_the_folder_survives(
 
     assert response.status_code == 200
     assert response.json()["warning"] is None
+
+
+# --- remount-only options -----------------------------------------------
+
+def make_pool(**kwargs) -> Pool:
+    return Pool(name="media", mountpoint="/mnt/pool/media",
+                branches=[Branch(path="/mnt/disks/d1")], **kwargs)
+
+
+def test_changing_writeback_warns_that_a_remount_is_needed():
+    # cache.writeback is negotiated when the FUSE connection is set up, so a
+    # save cannot apply it to a running pool - saying nothing would leave the
+    # user benchmarking a setting they are not actually running.
+    warning = pool_ops.remount_only_warning(
+        make_pool(cache_writeback=True), make_pool(), "/nonexistent/.mergerfs"
+    )
+
+    assert warning is not None
+    assert "cache.writeback=true" in warning
+
+
+def test_changed_extra_options_warn_too():
+    warning = pool_ops.remount_only_warning(
+        make_pool(extra_options="func.getattr=newest"), make_pool(),
+        "/nonexistent/.mergerfs",
+    )
+
+    assert warning is not None
+    assert "func.getattr=newest" in warning
+
+
+def test_untouched_options_do_not_warn():
+    # A save that leaves the remount-only fields alone has nothing to report,
+    # however they happen to be set - otherwise every single save of a pool
+    # with extra options would nag.
+    pool = make_pool(cache_writeback=True, extra_options="func.getattr=newest")
+
+    assert pool_ops.remount_only_warning(pool, pool, "/nonexistent/.mergerfs") is None
+
+
+def test_runtime_update_on_an_unmounted_pool_is_a_no_op(monkeypatch):
+    monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: False)
+
+    assert pool_ops.runtime_update(make_pool(cache_writeback=True), make_pool()) is None
+
+
+# --- option drift against the running mount -----------------------------
+
+def test_no_drift_when_the_pool_is_not_mounted(monkeypatch):
+    monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: False)
+
+    assert pool_ops.option_drift(make_pool(cache_writeback=True)) == []
+
+
+def _fake_live(monkeypatch, values):
+    monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: True)
+    monkeypatch.setattr(pool_ops, "live_option",
+                        lambda _mp, key: values.get(key))
+
+
+def test_drift_reports_what_the_mount_is_actually_running(monkeypatch):
+    # The case this exists for: writeback was saved, but mergerfs can only
+    # take it at mount time, so the pool is still running without it.
+    _fake_live(monkeypatch, {
+        "cache.files": "auto-full", "cache.writeback": "false",
+        "dropcacheonclose": "false",
+    })
+
+    drift = pool_ops.option_drift(make_pool(cache_writeback=True))
+
+    assert drift == ["cache.writeback: false -> true"]
+
+
+def test_matching_options_are_not_drift(monkeypatch):
+    _fake_live(monkeypatch, {
+        "cache.files": "auto-full", "cache.writeback": "false",
+        "dropcacheonclose": "false",
+    })
+
+    assert pool_ops.option_drift(make_pool()) == []
+
+
+def test_options_the_mount_will_not_report_are_skipped(monkeypatch):
+    # passthrough reads back as None on mergerfs older than 2.41. That is not
+    # drift - there is nothing to remount into - and reporting it would give
+    # every 2.40 user a permanent unfixable warning.
+    _fake_live(monkeypatch, {
+        "cache.files": "auto-full", "cache.writeback": "false",
+        "dropcacheonclose": "false", "passthrough": None,
+    })
+
+    assert pool_ops.option_drift(make_pool()) == []
+
+
+def test_extra_options_win_over_the_field_in_drift(monkeypatch):
+    # The pool field says auto-full, extra_options overrides it to partial;
+    # a mount running partial is correct and must not be reported.
+    _fake_live(monkeypatch, {
+        "cache.files": "partial", "cache.writeback": "false",
+        "dropcacheonclose": "false",
+    })
+
+    assert pool_ops.option_drift(make_pool(extra_options="cache.files=partial")) == []

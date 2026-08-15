@@ -15,6 +15,21 @@ IDLE_CHOICES = (0, 900, 1800, 2700, 3600, 7200, 10800, 14400, 18000, 21600)
 TEMP_SSD_OFFSET = 20
 MINFREESPACE_RE = re.compile(r"^\d+[KMGT]?$")
 CREATE_POLICIES = ("mfs", "epmfs", "ff", "pfrd", "rand", "lus", "lfs", "eplfs", "epff")
+# mergerfs cache.files modes. "off" forces direct_io: every read and write
+# crosses into the mergerfs process one call at a time, the kernel page cache
+# is bypassed entirely, and shared mmap stops working (FUSE cannot do it
+# without page caching), which breaks any application that memory-maps its
+# files - qBittorrent/libtorrent 2.x and sqlite3-based apps among them. It is
+# the right choice only when RAM is tight enough that double caching hurts
+# more than the lost throughput does, so it is offered but not the default.
+CACHE_FILES_MODES = ("off", "partial", "full", "auto-full", "per-process")
+# mergerfs passthrough.io modes. Passthrough hands the file descriptor to the
+# kernel so reads and writes go straight to the branch filesystem, skipping
+# the mergerfs process entirely - near native speed, and the only setting that
+# removes the FUSE round trip rather than amortising it. It needs kernel 6.9
+# and mergerfs 2.41 (see mergerfs_env.py), and it disables moveonenospc,
+# because mergerfs no longer sees the writes and so cannot see them fail.
+PASSTHROUGH_MODES = ("off", "ro", "wo", "rw")
 # fstab is whitespace-delimited, so paths and options written there must not
 # contain spaces; newlines would inject extra fstab entries.
 UNSAFE_FSTAB_CHARS = re.compile(r"[\s\x00,]")
@@ -63,6 +78,10 @@ class Pool(BaseModel):
     create_policy: str = "mfs"
     minfreespace: str = "4G"
     moveonenospc: bool = True
+    cache_files: str = "auto-full"
+    cache_writeback: bool = False
+    dropcacheonclose: bool = False
+    passthrough: str = "off"
     extra_options: str = ""
 
     @field_validator("name")
@@ -93,6 +112,41 @@ class Pool(BaseModel):
         if not MINFREESPACE_RE.match(v):
             raise ValueError("invalid minfreespace")
         return v
+
+    @field_validator("cache_files")
+    @classmethod
+    def _valid_cache_files(cls, v: str) -> str:
+        if v not in CACHE_FILES_MODES:
+            raise ValueError("invalid cache.files mode")
+        return v
+
+    @field_validator("passthrough")
+    @classmethod
+    def _valid_passthrough(cls, v: str) -> str:
+        if v not in PASSTHROUGH_MODES:
+            raise ValueError("invalid passthrough mode")
+        return v
+
+    @model_validator(mode="after")
+    def _writeback_needs_caching(self) -> "Pool":
+        # The kernel writeback cache sits on top of the page cache, so it is
+        # not merely useless without one - mergerfs refuses the combination.
+        if self.cache_writeback and self.cache_files == "off":
+            raise ValueError("cache.writeback requires cache.files other than off")
+        return self
+
+    @model_validator(mode="after")
+    def _passthrough_conflicts(self) -> "Pool":
+        # mergerfs resolves both of these silently - it flips cache.files to
+        # auto-full and cache.writeback back to false - which would leave the
+        # GUI showing settings the pool is not running. Refusing instead keeps
+        # the form and the mount honest about each other.
+        if self.passthrough != "off":
+            if self.cache_files == "off":
+                raise ValueError("passthrough requires cache.files other than off")
+            if self.cache_writeback:
+                raise ValueError("passthrough cannot be combined with cache.writeback")
+        return self
 
     @field_validator("extra_options")
     @classmethod

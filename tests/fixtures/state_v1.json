@@ -67,7 +67,11 @@
       "create_policy": "epmfs",
       "minfreespace": "20G",
       "moveonenospc": false,
-      "extra_options": "cache.files=partial,dropcacheonclose=true"
+      "cache_files": "full",
+      "cache_writeback": false,
+      "dropcacheonclose": true,
+      "passthrough": "rw",
+      "extra_options": "func.getattr=newest"
     }
   },
   "disk_mounts": {

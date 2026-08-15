@@ -194,7 +194,72 @@ def usage(path: str) -> Optional[dict]:
     return {"total": total, "free": free, "used": total - free}
 
 
-def runtime_update(pool: Pool) -> Optional[str]:
+# Options whose live value can be read back and compared without
+# normalisation. Deliberately not the whole list: mergerfs reports
+# minfreespace in bytes rather than the "4G" that was passed in, and
+# moveonenospc=true reads back as the create policy it resolved to, so both
+# would report drift on a pool that is running exactly what was asked for.
+# These four are plain string enums both ways, and they are the ones worth
+# checking - three of them only apply at mount time.
+VERIFIABLE_OPTIONS = ("cache.files", "cache.writeback", "dropcacheonclose",
+                      "passthrough")
+
+
+def live_option(mountpoint: str, key: str) -> Optional[str]:
+    """What the running mergerfs reports for one option, or None if it will
+    not say - not mounted, no control file, or an option this build predates
+    (passthrough on anything before 2.41).
+
+    Safe to call against a pool whose disks are spun down: .mergerfs is a
+    virtual control file answered inside the mergerfs process, so unlike a
+    readdir it never reaches a branch. That matters here - the diagnostics
+    page must not be the thing that wakes every disk in the machine.
+    """
+    try:
+        raw = os.getxattr(os.path.join(mountpoint, XATTR_CTL), f"user.mergerfs.{key}")
+    except OSError:
+        return None
+    return raw.decode(errors="replace").strip()
+
+
+def option_drift(pool: Pool) -> List[str]:
+    """Options the mounted pool is running that the saved config disagrees
+    with, formatted for display as "key: live -> wanted".
+
+    This is what tells a user a remount is actually needed, as opposed to
+    pool_unit_drift which only compares the unit file on disk. The two catch
+    different things: an edited unit that was never applied, versus applied
+    settings that a running mergerfs could not adopt without reconnecting.
+    """
+    if not is_mounted(pool.mountpoint):
+        return []
+    wanted = poolconf.merged_options(pool)
+    out: List[str] = []
+    for key in VERIFIABLE_OPTIONS:
+        want = wanted.get(key, "off" if key == "passthrough" else None)
+        if want is None:
+            continue
+        live = live_option(pool.mountpoint, key)
+        if live is not None and live != want:
+            out.append(f"{key}: {live} -> {want}")
+    return out
+
+
+def remount_pool(pool: Pool) -> None:
+    """Stop and start the pool so mount-time options are renegotiated.
+
+    Not `systemctl restart`: the bind mounts on top of a pool declare
+    Requires= on its service, so stopping it stops them too, and a restart
+    would bring the pool back with every bind mount left down - a Samba share
+    serving an empty directory, which is the exact failure the bind units
+    exist to prevent. Callers are responsible for bringing the binds back up;
+    diagnostics._fix_pool_needs_remount does.
+    """
+    unmount_pool(pool)
+    mount_pool(pool)
+
+
+def runtime_update(pool: Pool, old: Optional[Pool] = None) -> Optional[str]:
     """Push the new branch list and tunables into a mounted pool via the
     mergerfs xattr control file, so edits apply without a remount. Returns
     a warning string when that fails (changes then apply on next remount)."""
@@ -210,12 +275,52 @@ def runtime_update(pool: Pool) -> Optional[str]:
                     pool.minfreespace.encode())
         os.setxattr(ctl, "user.mergerfs.moveonenospc",
                     (b"true" if pool.moveonenospc else b"false"))
+        os.setxattr(ctl, "user.mergerfs.cache.files",
+                    pool.cache_files.encode())
+        os.setxattr(ctl, "user.mergerfs.dropcacheonclose",
+                    (b"true" if pool.dropcacheonclose else b"false"))
     except OSError as exc:
         return (
             "fstab updated, but the live pool could not be reconfigured "
             f"({exc}); changes take effect after a remount"
         )
-    return None
+    return remount_only_warning(pool, old, ctl)
+
+
+def remount_only_warning(pool: Pool, old: Optional[Pool], ctl: str) -> Optional[str]:
+    """Warn about changed settings that a running mergerfs cannot pick up.
+
+    cache.writeback is negotiated with the kernel when the FUSE connection is
+    established, so unlike every other option the GUI writes it cannot be
+    changed through the control file - the save would otherwise look like it
+    took effect while the pool kept running the old setting, which is exactly
+    the kind of silent no-op that sends someone benchmarking a setting they
+    are not actually running. extra_options gets the same treatment for a
+    different reason: the GUI does not know which of the keys a user typed
+    there are runtime-settable, so it does not guess.
+
+    Only *changes* are reported. A save that leaves these fields alone has
+    nothing to warn about, however they are set.
+    """
+    if old is None:
+        return None
+    stale: List[str] = []
+    if pool.cache_writeback != old.cache_writeback:
+        want = "true" if pool.cache_writeback else "false"
+        try:
+            live = os.getxattr(ctl, "user.mergerfs.cache.writeback").decode().strip()
+        except OSError:
+            live = ""  # not readable on this mergerfs; trust the stored value
+        if live != want:
+            stale.append(f"cache.writeback={want}")
+    if pool.extra_options != old.extra_options:
+        stale.extend(opt for opt in pool.extra_options.split(",") if opt)
+    if not stale:
+        return None
+    return (
+        "saved, but these options only take effect after remounting the "
+        f"pool: {', '.join(stale)}"
+    )
 
 
 def pool_info(pool: Pool) -> dict:

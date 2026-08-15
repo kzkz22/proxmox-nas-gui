@@ -1,4 +1,4 @@
-import { api, guard } from "../core/api.js";
+import { api, guard, refreshState } from "../core/api.js";
 import { confirmDialog } from "../core/dialog.js";
 import { $, esc, toast, view } from "../core/dom.js";
 import { t } from "../core/i18n.js";
@@ -106,6 +106,10 @@ function wire(findings) {
     if (!(await confirmDialog(finding ? findingConfirm(finding) : t("diag.fixConfirm")))) return;
     const res = await guard(() => api("/diagnostics/fix", { method: "POST", body: { id, entity } }));
     toast(res.detail, "ok", 6000);
+    // Some fixes rewrite the saved configuration, not just the running
+    // system - enabling passthrough edits the pool. Without this the pool
+    // editor would still show the settings from before the fix.
+    await refreshState();
     load();
   }));
 

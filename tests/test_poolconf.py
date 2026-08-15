@@ -4,6 +4,7 @@ from app.storage.models import Branch, BranchMode, DiskMount, Pool
 from app.storage.poolconf import (
     branches_removed,
     disk_fstab_line,
+    merged_options,
     mergerfs_options,
     parse_lsblk,
     parse_tag,
@@ -31,6 +32,13 @@ def test_options_defaults():
     assert "minfreespace=4G" in opts
     assert "moveonenospc=true" in opts
     assert "fsname=media" in opts
+    # The page cache is on by default: cache.files=off costs shared mmap
+    # support (which qBittorrent/libtorrent 2.x and sqlite need) and turns
+    # every small write into its own round trip into the mergerfs process.
+    assert "cache.files=auto-full" in opts
+    assert "cache.files=off" not in opts
+    assert "dropcacheonclose=false" in opts
+    assert "cache.writeback=false" in opts
     # Generic fstab options would be rejected by the mergerfs 2.33
     # mount helper, so they must never appear in the option string.
     assert "nofail" not in opts
@@ -45,11 +53,32 @@ def test_options_extra_appended():
 
 
 def test_options_extra_overrides_duplicate_key():
-    pool = make_pool(extra_options="cache.files=auto-full")
+    pool = make_pool(cache_files="off", extra_options="cache.files=partial")
     opts = mergerfs_options(pool)
     assert opts.count("cache.files=") == 1
-    assert "cache.files=auto-full" in opts
+    assert "cache.files=partial" in opts
     assert "cache.files=off" not in opts
+
+
+def test_cache_options_follow_the_pool():
+    opts = mergerfs_options(make_pool(
+        cache_files="partial", cache_writeback=True, dropcacheonclose=True,
+    ))
+    assert "cache.files=partial" in opts
+    assert "cache.writeback=true" in opts
+    assert "dropcacheonclose=true" in opts
+
+
+def test_invalid_cache_files_mode_rejected():
+    with pytest.raises(ValueError):
+        make_pool(cache_files="sometimes")
+
+
+def test_writeback_without_page_cache_rejected():
+    # mergerfs refuses the combination; catching it here means the GUI never
+    # generates a unit that fails to mount.
+    with pytest.raises(ValueError):
+        make_pool(cache_files="off", cache_writeback=True)
 
 
 def test_extra_options_rejects_managed_keys():
@@ -236,3 +265,28 @@ def test_parse_lsblk_excludes_whole_system_disk():
     assert not any(p.startswith("/dev/sdc") for p in devices)
     assert "/dev/mapper/pve-root" not in devices
     assert devices["/dev/sdd"]["formattable"] is True
+
+
+def test_passthrough_only_appears_once_enabled():
+    # mergerfs rejects options it does not know, and passthrough arrived in
+    # 2.41 - emitting passthrough=off would break every mount on 2.40.
+    assert "passthrough" not in mergerfs_options(make_pool())
+    assert "passthrough=rw" in mergerfs_options(make_pool(passthrough="rw"))
+
+
+def test_passthrough_conflicts_are_rejected():
+    for kwargs in (
+        dict(passthrough="rw", cache_files="off"),
+        dict(passthrough="rw", cache_writeback=True),
+        dict(passthrough="sideways"),
+    ):
+        with pytest.raises(ValueError):
+            make_pool(**kwargs)
+
+
+def test_merged_options_maps_keys_to_values():
+    merged = merged_options(make_pool(extra_options="cache.files=partial"))
+
+    assert merged["cache.files"] == "partial"
+    assert merged["dropcacheonclose"] == "false"
+    assert merged["allow_other"] is None  # valueless option

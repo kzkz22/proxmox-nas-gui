@@ -28,7 +28,7 @@ from typing import Callable, Dict, List
 from .core import fsops
 from .core.proc import SystemOpError
 from .models import State
-from .storage import bindconf, disksleep, poolconf
+from .storage import bindconf, disksleep, mergerfs_env, poolconf
 from .storage import binds as bind_ops
 from .storage import pools as pool_ops
 from .storage.models import BindMount
@@ -66,8 +66,35 @@ def _wrong_perms(path: str) -> bool:
 
 # --- checks ------------------------------------------------------------------
 
+def _mergerfs_checks(state: State) -> List[dict]:
+    """Whether the machine is leaving mergerfs performance on the table.
+
+    Only asked when there is a pool to care about, and only reported when both
+    version numbers are actually known - "cannot tell" must stay silent rather
+    than advise an upgrade that might be a downgrade.
+    """
+    if not state.pools:
+        return []
+    caps = mergerfs_env.capabilities()
+    if caps["passthrough_missing"] != "mergerfs":
+        return []
+    return [_finding(
+        "mergerfs_outdated", "pools", "mergerfs", "info", False,
+        {
+            "installed": caps["mergerfs_version"],
+            "needed": mergerfs_env.version_text(mergerfs_env.PASSTHROUGH_MIN_MERGERFS),
+            "kernel": caps["kernel_version"],
+        },
+        command=(
+            "wget https://github.com/trapexit/mergerfs/releases/latest && "
+            "dpkg -i mergerfs_<version>.debian-<codename>_<arch>.deb"
+        ),
+    )]
+
+
 def _pool_checks(state: State) -> List[dict]:
     out: List[dict] = []
+    caps = mergerfs_env.capabilities() if state.pools else {"passthrough": False}
     for name, pool in sorted(state.pools.items()):
         for branch in pool.branches:
             if not os.path.isdir(branch.path):
@@ -80,6 +107,27 @@ def _pool_checks(state: State) -> List[dict]:
                 "pool_not_mounted", "pools", name, "warn", True,
                 {"pool": name, "mountpoint": pool.mountpoint},
                 command=f"systemctl start {poolconf.pool_unit_name(name)}",
+            ))
+        # Reported off the effective option string rather than the field, so
+        # a cache.files=off typed into extra_options is caught too - that is
+        # how the setting usually ends up back on after being changed.
+        if "cache.files=off" in poolconf.mergerfs_options(pool):
+            out.append(_finding(
+                "pool_cache_files_off", "pools", name, "warn", False,
+                {"pool": name, "mountpoint": pool.mountpoint},
+            ))
+        drift = pool_ops.option_drift(pool)
+        if drift:
+            out.append(_finding(
+                "pool_needs_remount", "pools", name, "warn", True,
+                {"pool": name, "mountpoint": pool.mountpoint,
+                 "options": ", ".join(drift)},
+                command=f"systemctl restart {poolconf.pool_unit_name(name)}",
+            ))
+        if caps["passthrough"] and pool.passthrough == "off":
+            out.append(_finding(
+                "pool_passthrough_available", "pools", name, "info", True,
+                {"pool": name, "mountpoint": pool.mountpoint},
             ))
     return out
 
@@ -237,8 +285,9 @@ def _disk_checks(state: State) -> List[dict]:
 
 def run_all(state: State) -> List[dict]:
     findings = [
-        *_pool_checks(state), *_bind_checks(state), *_share_checks(state),
-        *_mount_checks(state), *_unit_checks(state), *_disk_checks(state),
+        *_mergerfs_checks(state), *_pool_checks(state), *_bind_checks(state),
+        *_share_checks(state), *_mount_checks(state), *_unit_checks(state),
+        *_disk_checks(state),
     ]
     return sorted(findings, key=lambda f: (
         _SEVERITY_ORDER.get(f["severity"], 3), f["category"], f["id"], f["entity"],
@@ -315,6 +364,67 @@ def _fix_bind_unit(state: State, entity: str) -> str:
     return f"systemd unit rewritten for bind mount {entity}"
 
 
+def _restart_binds_on(state: State, pool_name: str) -> List[str]:
+    """Bring back up every bind mount whose source is in this pool.
+
+    Required after any pool remount: the bind units declare Requires= on the
+    pool service, so stopping the pool takes them down with it, and nothing
+    brings them back on its own. A bind left down means Samba serving an empty
+    directory over what looks like a working share.
+    """
+    restarted = []
+    for name, bind in sorted(state.bind_mounts.items()):
+        if bindconf.pool_for_path(state.pools, bind.source) == pool_name:
+            bind_ops.mount_bind(bind)
+            restarted.append(name)
+    return restarted
+
+
+def _remount_pool(state: State, entity: str) -> str:
+    pool = state.pools.get(entity)
+    if not pool:
+        raise SystemOpError(f"no such pool: {entity}")
+    pool_ops.remount_pool(pool)
+    restarted = _restart_binds_on(state, entity)
+    detail = f"pool {entity} remounted"
+    if restarted:
+        detail += f"; bind mounts restarted: {', '.join(restarted)}"
+    return detail
+
+
+def _fix_pool_passthrough(state: State, entity: str) -> str:
+    """Turn on IO passthrough and remount, adjusting what it is incompatible
+    with. Mutates the Pool, so this id is in MUTATES_STATE and the caller
+    persists the result - see diagnostics_api.fix.
+
+    moveonenospc has to go: under passthrough the kernel writes to the branch
+    file directly, so mergerfs never sees an ENOSPC to react to and the option
+    is a promise it can no longer keep. Better to have the setting say so than
+    to leave it on and silently inert.
+    """
+    pool = state.pools.get(entity)
+    if not pool:
+        raise SystemOpError(f"no such pool: {entity}")
+    changed = ["passthrough=rw"]
+    pool.passthrough = "rw"
+    if pool.cache_files == "off":
+        pool.cache_files = "auto-full"
+        changed.append("cache.files=auto-full")
+    if pool.cache_writeback:
+        pool.cache_writeback = False
+        changed.append("cache.writeback=false")
+    if pool.moveonenospc:
+        pool.moveonenospc = False
+        changed.append("moveonenospc=false")
+    pool_ops.write_pool_unit(pool)
+    if pool_ops.is_mounted(pool.mountpoint):
+        pool_ops.remount_pool(pool)
+        _restart_binds_on(state, entity)
+    else:
+        pool_ops.mount_pool(pool)
+    return f"pool {entity}: {', '.join(changed)}; remounted"
+
+
 FIXABLE: Dict[str, Callable[[State, str], str]] = {
     "pool_not_mounted": _fix_pool_not_mounted,
     "bind_not_mounted": _fix_bind_not_mounted,
@@ -325,11 +435,22 @@ FIXABLE: Dict[str, Callable[[State, str], str]] = {
     "pool_unit_missing": _fix_pool_unit,
     "pool_unit_drift": _fix_pool_unit,
     "bind_unit_missing": _fix_bind_unit,
+    "pool_needs_remount": _remount_pool,
+    "pool_passthrough_available": _fix_pool_passthrough,
 }
+
+# Fixes that change the saved configuration rather than only acting on the
+# running system. The HTTP layer holds the state lock and writes the result
+# back for these; everything else leaves state.json alone.
+MUTATES_STATE = frozenset({"pool_passthrough_available"})
 
 
 def is_fixable(finding_id: str) -> bool:
     return finding_id in FIXABLE or finding_id in disksleep.FIXABLE
+
+
+def mutates_state(finding_id: str) -> bool:
+    return finding_id in MUTATES_STATE
 
 
 def apply_fix(state: State, finding_id: str, entity: str) -> str:

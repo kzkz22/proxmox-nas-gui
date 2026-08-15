@@ -25,28 +25,72 @@ MOUNTABLE_EXCLUDE_FSTYPES = {
 def mergerfs_options(pool: Pool) -> str:
     """Build the mergerfs `-o` option string.
 
+    The three cache options are spelled out even when they match mergerfs's
+    own defaults, because they are the settings that decide write throughput
+    and they are worth reading straight off the generated unit file:
+
+      cache.files      whether the kernel page cache is used at all. With
+                       "off" mergerfs runs in direct_io mode - no page cache,
+                       no shared mmap, and every I/O is its own round trip
+                       into the mergerfs process. Anything that writes in
+                       small pieces (a torrent client filling a file 16 KiB
+                       at a time) pays that cost per piece.
+      cache.writeback  lets the kernel accumulate those small writes in the
+                       page cache and hand mergerfs one large request
+                       instead. Without it FUSE writes through: a 16 KiB
+                       write from the application stays a 16 KiB write.
+                       Requires cache.files to be enabled.
+      dropcacheonclose drops a file's cached pages when it is closed. Saves
+                       RAM (the data would otherwise sit in both mergerfs's
+                       and the branch filesystem's cache) at the cost of
+                       throwing away cache a re-reader would have used.
+
+    passthrough is the fourth, and only appears once switched on - see
+    merged_options() for why. It is the one setting that removes the round
+    trip rather than amortising it: the kernel talks to the branch file
+    directly, at the cost of moveonenospc.
+
     Options are merged by key rather than concatenated: if extra_options
     sets a key the GUI also sets (e.g. cache.files), the extra_options
     value wins instead of producing a duplicate `key=value` pair, which
     mergerfs would otherwise receive verbatim with an ambiguous winner.
     """
+    return ",".join(
+        f"{key}={value}" if value is not None else key
+        for key, value in merged_options(pool).items()
+    )
+
+
+def merged_options(pool: Pool) -> Dict[str, Optional[str]]:
+    """The effective option map, keyed by option name, in emission order.
+
+    Split out from mergerfs_options() so a caller can ask about one option
+    without re-parsing the joined string - the drift check compares individual
+    values against what the running mount reports, and extra_options means the
+    value for a key is not always the one the matching field holds.
+
+    A valueless option (allow_other) maps to None.
+    """
     defaults = [
         "allow_other",
-        "cache.files=off",
-        "dropcacheonclose=true",
+        f"cache.files={pool.cache_files}",
+        f"cache.writeback={'true' if pool.cache_writeback else 'false'}",
+        f"dropcacheonclose={'true' if pool.dropcacheonclose else 'false'}",
         f"category.create={pool.create_policy}",
         f"minfreespace={pool.minfreespace}",
         f"moveonenospc={'true' if pool.moveonenospc else 'false'}",
         f"fsname={pool.name}",
     ]
-    merged: Dict[str, str] = {}
-    order: List[str] = []
+    # Only emitted when actually enabled: mergerfs rejects options it does not
+    # know, and passthrough arrived in 2.41. Writing passthrough=off would
+    # make every pool fail to mount on the 2.40 that Debian 13 still ships.
+    if pool.passthrough != "off":
+        defaults.insert(4, f"passthrough={pool.passthrough}")
+    merged: Dict[str, Optional[str]] = {}
     for opt in defaults + (pool.extra_options.split(",") if pool.extra_options else []):
-        key = opt.split("=", 1)[0]
-        if key not in merged:
-            order.append(key)
-        merged[key] = opt
-    return ",".join(merged[key] for key in order)
+        key, sep, value = opt.partition("=")
+        merged[key] = value if sep else None
+    return merged
 
 
 def branches_spec(pool: Pool) -> str:

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 
 from ...core import state as state_store
@@ -22,12 +24,14 @@ def _bind_blockers(st, mountpoint: str) -> None:
         )
 
 
-def _save_and_apply(st, pool: Pool, was_mounted: bool) -> dict:
+def _save_and_apply(
+    st, pool: Pool, was_mounted: bool, old: Optional[Pool] = None
+) -> dict:
     pools.write_pool_unit(pool)
     state_store.save_state(st)
     warning = None
     if was_mounted:
-        warning = pools.runtime_update(pool)
+        warning = pools.runtime_update(pool, old)
     else:
         try:
             pools.mount_pool(pool)
@@ -73,7 +77,7 @@ def update_pool(name: str, pool: Pool):
         orphaned = pools.orphaned_binds(st, old, pool)
         was_mounted = pools.is_mounted(pool.mountpoint)
         st.pools[name] = pool
-        result = _save_and_apply(st, pool, was_mounted)
+        result = _save_and_apply(st, pool, was_mounted, old)
         if orphaned:
             note = (
                 "removing branch(es) will hide the source of bind mount(s) "
