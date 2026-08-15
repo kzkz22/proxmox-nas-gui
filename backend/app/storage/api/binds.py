@@ -107,12 +107,19 @@ def _create_source(bind: BindMount) -> None:
 
     A dataset rather than a plain directory whenever the parent is one, so
     the per-folder snapshots and quotas people set up ZFS for stay possible.
+
+    Ownership/mode are then set the same way a share root gets them (see
+    fsops.apply_share_perms): a plain mkdir is root:root 0755, which Samba's
+    "force user = nobody" can list but not write into - so without this a
+    freshly (re)created presentation folder would look empty and read-only
+    to every client even though the mount succeeded.
     """
     if os.path.isdir(bind.source):
         return
     source = Path(bind.source)
     parent = str(source.parent)
     fsops.make_dir(parent, source.name, dataset=parent in fsops.zfs_datasets())
+    fsops.apply_share_perms(bind.source)
 
 
 def _empty_folder_warning(st: State, bind: BindMount) -> Optional[str]:

@@ -7,9 +7,11 @@ share lose its storage.
 """
 
 import json
+import os
 
 import pytest
 
+from app.core import fsops
 from app.storage import binds as bind_ops
 from app.storage import pools as pool_ops
 
@@ -34,6 +36,24 @@ def stub_mount(monkeypatch):
     calls = []
     monkeypatch.setattr(bind_ops, "mount_bind", lambda bind: calls.append(bind.name))
     monkeypatch.setattr(bind_ops, "unmount_bind", lambda bind: None)
+    return calls
+
+
+@pytest.fixture
+def stub_chown(monkeypatch):
+    """Replace the chown half of apply_share_perms with a recorder.
+
+    Ownership changes to a *different* user require root - the real app runs
+    as root, but the test runner does not, so a live chown would fail here
+    for a reason that has nothing to do with what these tests check. chmod on
+    a file the test process already owns needs no such privilege, so that
+    half still runs for real.
+    """
+    calls = []
+    monkeypatch.setattr(
+        fsops.shutil, "chown",
+        lambda path, user=None, group=None: calls.append((str(path), user, group)),
+    )
     return calls
 
 
@@ -328,7 +348,7 @@ def test_bulk_applies_nothing_when_one_entry_conflicts(
 
 
 def test_bulk_creates_missing_source_directories(
-    auth_client, sandbox, tmp_path, no_systemd, stub_mount
+    auth_client, sandbox, tmp_path, no_systemd, stub_mount, stub_chown
 ):
     source_root = tmp_path / "fontos"
     source_root.mkdir()
@@ -343,6 +363,29 @@ def test_bulk_creates_missing_source_directories(
 
     assert response.status_code == 200
     assert (source_root / "kz").is_dir()
+
+
+def test_created_source_directories_are_writable_by_the_samba_guest_account(
+    auth_client, sandbox, tmp_path, no_systemd, stub_mount, stub_chown
+):
+    """A plain mkdir is root:root 0755, which Samba's "force user = nobody"
+    can list but not write into - so a recreated source must get the same
+    nobody:nogroup 0777 ownership every other presentation folder has."""
+    source_root = tmp_path / "fontos"
+    source_root.mkdir()
+
+    response = auth_client.post("/api/binds/bulk", json={
+        "binds": [{
+            "name": "kz-fontos", "source": f"{source_root}/kz",
+            "target": f"{tmp_path}/family_pool/kz/fontos",
+        }],
+        "create_sources": True,
+    })
+
+    assert response.status_code == 200
+    assert stub_chown == [(str(source_root / "kz"), "nobody", "nogroup")]
+    st = os.stat(source_root / "kz")
+    assert oct(st.st_mode)[-3:] == "777"
 
 
 def test_a_missing_source_directory_is_left_alone_by_default(

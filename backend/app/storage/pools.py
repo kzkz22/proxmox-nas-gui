@@ -263,3 +263,30 @@ def pools_using_path(state: State, path: str) -> List[str]:
         name for name, pool in state.pools.items()
         if any(b.path == p for b in pool.branches)
     )
+
+
+def orphaned_binds(state: State, old: Pool, new: Pool) -> List[str]:
+    """Bind mounts whose source would stop existing under `new`'s branches.
+
+    mergerfs's create policy (see mergerfs_options/category.create) puts a
+    path that does not exist yet on exactly one branch, not every branch. So
+    a subtree a bind mount presents can easily live on only one disk, and
+    removing that disk from the pool makes the union - and everything a bind
+    mount shows through it - go missing even though nothing was deleted. This
+    only checks removed branches against what is left on disk, so it is safe
+    to call before the pool's branch list is actually saved or remounted.
+    """
+    removed = poolconf.branches_removed(old, new)
+    if not removed:
+        return []
+    remaining = [b.path for b in new.branches]
+    mountpoint = old.mountpoint.rstrip("/")
+    out: List[str] = []
+    for name, bind in state.bind_mounts.items():
+        source = bind.source.rstrip("/")
+        if source != mountpoint and not source.startswith(mountpoint + "/"):
+            continue
+        rel = source[len(mountpoint):]
+        if not any(os.path.isdir(branch + rel) for branch in remaining):
+            out.append(name)
+    return sorted(out)
