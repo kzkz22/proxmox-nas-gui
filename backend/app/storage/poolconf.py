@@ -41,6 +41,12 @@ def branches_spec(pool: Pool) -> str:
     return ":".join(f"{b.path}={b.mode.value}" for b in pool.branches)
 
 
+def branches_removed(old: Pool, new: Pool) -> List[str]:
+    """Branch paths present in `old` but not in `new`."""
+    new_paths = {b.path for b in new.branches}
+    return [b.path for b in old.branches if b.path not in new_paths]
+
+
 def pool_unit_name(pool_name: str) -> str:
     return f"pnas-pool-{pool_name}.service"
 

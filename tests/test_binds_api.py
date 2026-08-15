@@ -345,6 +345,30 @@ def test_bulk_creates_missing_source_directories(
     assert (source_root / "kz").is_dir()
 
 
+def test_created_source_directories_are_writable_by_the_samba_guest_account(
+    auth_client, sandbox, tmp_path, no_systemd, stub_mount
+):
+    """A plain mkdir is root:root 0755, which Samba's "force user = nobody"
+    can list but not write into - so a recreated source must get the same
+    nobody:nogroup 0777 ownership every other presentation folder has."""
+    import os
+
+    source_root = tmp_path / "fontos"
+    source_root.mkdir()
+
+    response = auth_client.post("/api/binds/bulk", json={
+        "binds": [{
+            "name": "kz-fontos", "source": f"{source_root}/kz",
+            "target": f"{tmp_path}/family_pool/kz/fontos",
+        }],
+        "create_sources": True,
+    })
+
+    assert response.status_code == 200
+    st = os.stat(source_root / "kz")
+    assert oct(st.st_mode)[-3:] == "777"
+
+
 def test_a_missing_source_directory_is_left_alone_by_default(
     auth_client, sandbox, tmp_path, no_systemd, stub_mount
 ):

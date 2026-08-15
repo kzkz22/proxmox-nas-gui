@@ -2,6 +2,7 @@ import pytest
 
 from app.storage.models import Branch, BranchMode, DiskMount, Pool
 from app.storage.poolconf import (
+    branches_removed,
     disk_fstab_line,
     mergerfs_options,
     parse_lsblk,
@@ -83,6 +84,13 @@ def test_nesting_rejected():
     with pytest.raises(ValueError):
         make_pool(branches=[Branch(path="/mnt/disks/d1"),
                             Branch(path="/mnt/disks/d1")])
+
+
+def test_branches_removed():
+    old = make_pool(branches=[Branch(path="/mnt/disks/d1"), Branch(path="/mnt/disks/d2")])
+    new = make_pool(branches=[Branch(path="/mnt/disks/d1")])
+    assert branches_removed(old, new) == ["/mnt/disks/d2"]
+    assert branches_removed(old, old) == []
 
 
 def test_path_with_space_or_colon_rejected():

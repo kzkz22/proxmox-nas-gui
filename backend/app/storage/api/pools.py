@@ -70,9 +70,17 @@ def update_pool(name: str, pool: Pool):
                     409, "shares depend on this pool's mountpoint: " + ", ".join(deps)
                 )
             pools.unmount_pool(old)
+        orphaned = pools.orphaned_binds(st, old, pool)
         was_mounted = pools.is_mounted(pool.mountpoint)
         st.pools[name] = pool
-        return _save_and_apply(st, pool, was_mounted)
+        result = _save_and_apply(st, pool, was_mounted)
+        if orphaned:
+            note = (
+                "removing branch(es) will hide the source of bind mount(s) "
+                "until recreated: " + ", ".join(orphaned)
+            )
+            result["warning"] = "; ".join(w for w in (result["warning"], note) if w)
+        return result
 
 
 @router.delete("/{name}")

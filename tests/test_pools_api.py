@@ -29,11 +29,12 @@ def no_systemd(monkeypatch):
 def stored(sandbox):
     """Write state.json directly: creating the pool through the API would try
     to mount it."""
-    def write(shares=None, pools=None):
+    def write(shares=None, pools=None, bind_mounts=None):
         state = {
             "version": 1,
             "shares": shares or {},
             "pools": pools or {},
+            "bind_mounts": bind_mounts or {},
         }
         (sandbox["PNAS_STATE_DIR"] / "state.json").write_text(json.dumps(state))
     return write
@@ -102,3 +103,57 @@ def test_moving_the_mountpoint_is_refused_while_a_share_depends_on_it(
 def test_unknown_pool_is_a_404_not_a_409(auth_client, stored, no_systemd):
     stored()
     assert auth_client.delete("/api/pools/nope").status_code == 404
+
+
+def test_removing_a_branch_warns_when_it_orphans_a_bind_source(
+    auth_client, sandbox, stored, no_systemd, tmp_path
+):
+    """kz lives only on d2 (e.g. mergerfs's epmfs create policy put it there
+    when d2 had more free space); dropping d2 makes the union - and the bind
+    mount that presents it - lose that folder, so the edit should say so."""
+    d1, d2 = tmp_path / "d1", tmp_path / "d2"
+    d1.mkdir()
+    d2.mkdir()
+    (d2 / "kz").mkdir()
+    pool = {
+        "name": "bulk",
+        "mountpoint": str(tmp_path / "pool" / "bulk"),
+        "branches": [{"path": str(d1), "mode": "RW"}, {"path": str(d2), "mode": "RW"}],
+    }
+    stored(pools={"bulk": pool}, bind_mounts={"kz-bulk": {
+        "name": "kz-bulk", "source": f"{pool['mountpoint']}/kz",
+        "target": "/mnt/family_pool/kz/bulk",
+    }})
+
+    response = auth_client.put(
+        "/api/pools/bulk", json={**pool, "branches": [{"path": str(d1), "mode": "RW"}]}
+    )
+
+    assert response.status_code == 200
+    assert "kz-bulk" in response.json()["warning"]
+
+
+def test_removing_a_branch_does_not_warn_when_the_folder_survives(
+    auth_client, sandbox, stored, no_systemd, tmp_path
+):
+    d1, d2 = tmp_path / "d1", tmp_path / "d2"
+    d1.mkdir()
+    d2.mkdir()
+    (d1 / "kz").mkdir()
+    (d2 / "kz").mkdir()
+    pool = {
+        "name": "bulk",
+        "mountpoint": str(tmp_path / "pool" / "bulk"),
+        "branches": [{"path": str(d1), "mode": "RW"}, {"path": str(d2), "mode": "RW"}],
+    }
+    stored(pools={"bulk": pool}, bind_mounts={"kz-bulk": {
+        "name": "kz-bulk", "source": f"{pool['mountpoint']}/kz",
+        "target": "/mnt/family_pool/kz/bulk",
+    }})
+
+    response = auth_client.put(
+        "/api/pools/bulk", json={**pool, "branches": [{"path": str(d1), "mode": "RW"}]}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["warning"] is None
