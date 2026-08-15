@@ -194,6 +194,71 @@ def usage(path: str) -> Optional[dict]:
     return {"total": total, "free": free, "used": total - free}
 
 
+# Options whose live value can be read back and compared without
+# normalisation. Deliberately not the whole list: mergerfs reports
+# minfreespace in bytes rather than the "4G" that was passed in, and
+# moveonenospc=true reads back as the create policy it resolved to, so both
+# would report drift on a pool that is running exactly what was asked for.
+# These four are plain string enums both ways, and they are the ones worth
+# checking - three of them only apply at mount time.
+VERIFIABLE_OPTIONS = ("cache.files", "cache.writeback", "dropcacheonclose",
+                      "passthrough")
+
+
+def live_option(mountpoint: str, key: str) -> Optional[str]:
+    """What the running mergerfs reports for one option, or None if it will
+    not say - not mounted, no control file, or an option this build predates
+    (passthrough on anything before 2.41).
+
+    Safe to call against a pool whose disks are spun down: .mergerfs is a
+    virtual control file answered inside the mergerfs process, so unlike a
+    readdir it never reaches a branch. That matters here - the diagnostics
+    page must not be the thing that wakes every disk in the machine.
+    """
+    try:
+        raw = os.getxattr(os.path.join(mountpoint, XATTR_CTL), f"user.mergerfs.{key}")
+    except OSError:
+        return None
+    return raw.decode(errors="replace").strip()
+
+
+def option_drift(pool: Pool) -> List[str]:
+    """Options the mounted pool is running that the saved config disagrees
+    with, formatted for display as "key: live -> wanted".
+
+    This is what tells a user a remount is actually needed, as opposed to
+    pool_unit_drift which only compares the unit file on disk. The two catch
+    different things: an edited unit that was never applied, versus applied
+    settings that a running mergerfs could not adopt without reconnecting.
+    """
+    if not is_mounted(pool.mountpoint):
+        return []
+    wanted = poolconf.merged_options(pool)
+    out: List[str] = []
+    for key in VERIFIABLE_OPTIONS:
+        want = wanted.get(key, "off" if key == "passthrough" else None)
+        if want is None:
+            continue
+        live = live_option(pool.mountpoint, key)
+        if live is not None and live != want:
+            out.append(f"{key}: {live} -> {want}")
+    return out
+
+
+def remount_pool(pool: Pool) -> None:
+    """Stop and start the pool so mount-time options are renegotiated.
+
+    Not `systemctl restart`: the bind mounts on top of a pool declare
+    Requires= on its service, so stopping it stops them too, and a restart
+    would bring the pool back with every bind mount left down - a Samba share
+    serving an empty directory, which is the exact failure the bind units
+    exist to prevent. Callers are responsible for bringing the binds back up;
+    diagnostics._fix_pool_needs_remount does.
+    """
+    unmount_pool(pool)
+    mount_pool(pool)
+
+
 def runtime_update(pool: Pool, old: Optional[Pool] = None) -> Optional[str]:
     """Push the new branch list and tunables into a mounted pool via the
     mergerfs xattr control file, so edits apply without a remount. Returns

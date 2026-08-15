@@ -14,6 +14,7 @@ from app.core.proc import SystemOpError
 from app import diagnostics as diag
 from app.models import State
 from app.samba.models import Access, Share
+from app.storage import binds as bind_ops
 from app.storage import pools as pool_ops
 from app.storage.models import Branch, BindMount, DiskMount, Pool
 
@@ -523,3 +524,163 @@ def test_apply_fix_disk_id_rejects_an_unknown_disk(monkeypatch):
 
 def test_diagnostics_ids_never_collide_with_disksleep_ids():
     assert not (set(diag.FIXABLE) & set(diag.disksleep.FIXABLE))
+
+
+# --- mergerfs capability checks -----------------------------------------
+
+@pytest.fixture
+def caps(monkeypatch):
+    """Fake the machine's mergerfs/kernel capability probe. Defaults to the
+    common Debian case: kernel new enough, packaged mergerfs is not."""
+    def setup(passthrough=False, missing="mergerfs", version="2.40.2"):
+        monkeypatch.setattr(diag.mergerfs_env, "capabilities", lambda: {
+            "mergerfs_version": version, "kernel_version": "7.0.2",
+            "passthrough": passthrough, "passthrough_missing": missing,
+        })
+    setup()
+    return setup
+
+
+@pytest.fixture(autouse=True)
+def no_drift(monkeypatch):
+    """Pool option drift needs a real mergerfs control file to read; default
+    to "the mount runs what is configured" so it stays out of other checks."""
+    monkeypatch.setattr(pool_ops, "option_drift", lambda _pool: [])
+
+
+def test_outdated_mergerfs_is_reported_when_the_kernel_could_do_better(
+    tmp_path, caps
+):
+    branch = tmp_path / "d1"
+    branch.mkdir()
+    st = State(pools={"bulk": make_pool("bulk", str(tmp_path / "pool"), str(branch))})
+
+    findings = diag._mergerfs_checks(st)
+
+    assert [f["id"] for f in findings] == ["mergerfs_outdated"]
+    assert (findings[0]["severity"], findings[0]["fixable"]) == ("info", False)
+    assert findings[0]["vars"]["installed"] == "2.40.2"
+
+
+def test_an_old_kernel_is_not_blamed_on_mergerfs(tmp_path, caps):
+    caps(missing="kernel")
+    branch = tmp_path / "d1"
+    branch.mkdir()
+    st = State(pools={"bulk": make_pool("bulk", str(tmp_path / "pool"), str(branch))})
+
+    assert diag._mergerfs_checks(st) == []
+
+
+def test_no_pools_means_no_upgrade_advice(caps):
+    assert diag._mergerfs_checks(State()) == []
+
+
+def test_passthrough_is_offered_when_available(tmp_path, caps):
+    caps(passthrough=True, missing=None, version="2.42.0")
+    branch = tmp_path / "d1"
+    branch.mkdir()
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
+    st = State(pools={"bulk": pool})
+
+    findings = diag._pool_checks(st)
+
+    assert [f["id"] for f in findings] == ["pool_passthrough_available"]
+    assert findings[0]["fixable"] is True
+
+
+def test_passthrough_is_not_offered_twice(tmp_path, caps):
+    caps(passthrough=True, missing=None, version="2.42.0")
+    branch = tmp_path / "d1"
+    branch.mkdir()
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
+    pool.passthrough = "rw"
+    pool.moveonenospc = False
+
+    assert diag._pool_checks(State(pools={"bulk": pool})) == []
+
+
+def test_drift_is_a_fixable_warning(tmp_path, caps, monkeypatch):
+    branch = tmp_path / "d1"
+    branch.mkdir()
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(branch))
+    monkeypatch.setattr(
+        pool_ops, "option_drift", lambda _pool: ["cache.writeback: false -> true"]
+    )
+
+    findings = diag._pool_checks(State(pools={"bulk": pool}))
+
+    assert [f["id"] for f in findings] == ["pool_needs_remount"]
+    assert findings[0]["fixable"] is True
+    assert "cache.writeback" in findings[0]["vars"]["options"]
+
+
+# --- the new fixes ------------------------------------------------------
+
+def test_passthrough_fix_turns_off_what_it_conflicts_with(tmp_path, monkeypatch):
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(tmp_path / "d1"))
+    pool.cache_writeback = True
+    st = State(pools={"bulk": pool})
+    monkeypatch.setattr(pool_ops, "write_pool_unit", lambda _p: None)
+    monkeypatch.setattr(pool_ops, "remount_pool", lambda _p: None)
+
+    detail = diag.apply_fix(st, "pool_passthrough_available", "bulk")
+
+    assert pool.passthrough == "rw"
+    # Both are promises mergerfs cannot keep once the kernel owns the IO;
+    # leaving them set would show settings the pool is not running.
+    assert pool.cache_writeback is False
+    assert pool.moveonenospc is False
+    assert "passthrough=rw" in detail
+
+
+def test_passthrough_fix_mounts_a_pool_that_was_down(tmp_path, monkeypatch):
+    pool = make_pool("bulk", str(tmp_path / "pool"), str(tmp_path / "d1"))
+    monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: False)
+    monkeypatch.setattr(pool_ops, "write_pool_unit", lambda _p: None)
+    mounted = []
+    monkeypatch.setattr(pool_ops, "mount_pool", lambda p: mounted.append(p.name))
+
+    diag.apply_fix(State(pools={"bulk": pool}), "pool_passthrough_available", "bulk")
+
+    assert mounted == ["bulk"]
+
+
+def test_remount_fix_brings_the_binds_back_up(tmp_path, monkeypatch):
+    # Bind units declare Requires= on the pool service, so stopping the pool
+    # stops them too. A remount that left them down would hand Samba an empty
+    # directory over what still looks like a working share.
+    mountpoint = str(tmp_path / "pool")
+    pool = make_pool("bulk", mountpoint, str(tmp_path / "d1"))
+    bind = BindMount(name="kz", source=f"{mountpoint}/kz", target="/mnt/tree/kz")
+    st = State(pools={"bulk": pool}, bind_mounts={"kz": bind})
+    remounted, rebound = [], []
+    monkeypatch.setattr(pool_ops, "remount_pool", lambda p: remounted.append(p.name))
+    monkeypatch.setattr(bind_ops, "mount_bind", lambda b: rebound.append(b.name))
+
+    detail = diag.apply_fix(st, "pool_needs_remount", "bulk")
+
+    assert remounted == ["bulk"]
+    assert rebound == ["kz"]
+    assert "kz" in detail
+
+
+def test_remount_fix_leaves_other_pools_binds_alone(tmp_path, monkeypatch):
+    pool = make_pool("bulk", str(tmp_path / "bulk"), str(tmp_path / "d1"))
+    other = make_pool("fast", str(tmp_path / "fast"), str(tmp_path / "d2"))
+    bind = BindMount(name="kz", source=f"{tmp_path / 'fast'}/kz", target="/mnt/tree/kz")
+    st = State(pools={"bulk": pool, "fast": other}, bind_mounts={"kz": bind})
+    monkeypatch.setattr(pool_ops, "remount_pool", lambda _p: None)
+    rebound = []
+    monkeypatch.setattr(bind_ops, "mount_bind", lambda b: rebound.append(b.name))
+
+    diag.apply_fix(st, "pool_needs_remount", "bulk")
+
+    assert rebound == []
+
+
+def test_only_the_passthrough_fix_is_marked_as_changing_config():
+    # The HTTP layer takes the state lock and saves for these; a fix wrongly
+    # listed here would write state.json on every click.
+    assert diag.mutates_state("pool_passthrough_available") is True
+    assert diag.mutates_state("pool_needs_remount") is False
+    assert diag.mutates_state("pool_not_mounted") is False

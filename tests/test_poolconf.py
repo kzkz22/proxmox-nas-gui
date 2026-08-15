@@ -4,6 +4,7 @@ from app.storage.models import Branch, BranchMode, DiskMount, Pool
 from app.storage.poolconf import (
     branches_removed,
     disk_fstab_line,
+    merged_options,
     mergerfs_options,
     parse_lsblk,
     parse_tag,
@@ -264,3 +265,28 @@ def test_parse_lsblk_excludes_whole_system_disk():
     assert not any(p.startswith("/dev/sdc") for p in devices)
     assert "/dev/mapper/pve-root" not in devices
     assert devices["/dev/sdd"]["formattable"] is True
+
+
+def test_passthrough_only_appears_once_enabled():
+    # mergerfs rejects options it does not know, and passthrough arrived in
+    # 2.41 - emitting passthrough=off would break every mount on 2.40.
+    assert "passthrough" not in mergerfs_options(make_pool())
+    assert "passthrough=rw" in mergerfs_options(make_pool(passthrough="rw"))
+
+
+def test_passthrough_conflicts_are_rejected():
+    for kwargs in (
+        dict(passthrough="rw", cache_files="off"),
+        dict(passthrough="rw", cache_writeback=True),
+        dict(passthrough="sideways"),
+    ):
+        with pytest.raises(ValueError):
+            make_pool(**kwargs)
+
+
+def test_merged_options_maps_keys_to_values():
+    merged = merged_options(make_pool(extra_options="cache.files=partial"))
+
+    assert merged["cache.files"] == "partial"
+    assert merged["dropcacheonclose"] == "false"
+    assert merged["allow_other"] is None  # valueless option

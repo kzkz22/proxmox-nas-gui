@@ -202,3 +202,62 @@ def test_runtime_update_on_an_unmounted_pool_is_a_no_op(monkeypatch):
     monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: False)
 
     assert pool_ops.runtime_update(make_pool(cache_writeback=True), make_pool()) is None
+
+
+# --- option drift against the running mount -----------------------------
+
+def test_no_drift_when_the_pool_is_not_mounted(monkeypatch):
+    monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: False)
+
+    assert pool_ops.option_drift(make_pool(cache_writeback=True)) == []
+
+
+def _fake_live(monkeypatch, values):
+    monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: True)
+    monkeypatch.setattr(pool_ops, "live_option",
+                        lambda _mp, key: values.get(key))
+
+
+def test_drift_reports_what_the_mount_is_actually_running(monkeypatch):
+    # The case this exists for: writeback was saved, but mergerfs can only
+    # take it at mount time, so the pool is still running without it.
+    _fake_live(monkeypatch, {
+        "cache.files": "auto-full", "cache.writeback": "false",
+        "dropcacheonclose": "false",
+    })
+
+    drift = pool_ops.option_drift(make_pool(cache_writeback=True))
+
+    assert drift == ["cache.writeback: false -> true"]
+
+
+def test_matching_options_are_not_drift(monkeypatch):
+    _fake_live(monkeypatch, {
+        "cache.files": "auto-full", "cache.writeback": "false",
+        "dropcacheonclose": "false",
+    })
+
+    assert pool_ops.option_drift(make_pool()) == []
+
+
+def test_options_the_mount_will_not_report_are_skipped(monkeypatch):
+    # passthrough reads back as None on mergerfs older than 2.41. That is not
+    # drift - there is nothing to remount into - and reporting it would give
+    # every 2.40 user a permanent unfixable warning.
+    _fake_live(monkeypatch, {
+        "cache.files": "auto-full", "cache.writeback": "false",
+        "dropcacheonclose": "false", "passthrough": None,
+    })
+
+    assert pool_ops.option_drift(make_pool()) == []
+
+
+def test_extra_options_win_over_the_field_in_drift(monkeypatch):
+    # The pool field says auto-full, extra_options overrides it to partial;
+    # a mount running partial is correct and must not be reported.
+    _fake_live(monkeypatch, {
+        "cache.files": "partial", "cache.writeback": "false",
+        "dropcacheonclose": "false",
+    })
+
+    assert pool_ops.option_drift(make_pool(extra_options="cache.files=partial")) == []

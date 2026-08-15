@@ -71,6 +71,11 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
   sqlite) hibára futnak, az apró darabokban írók pedig a lemez
   képességének töredékét hozzák. A Diagnosztika külön figyelmeztet rá,
   ha egy pool mégis így fut
+- **IO passthrough**: ha a kernel (6.9+) és a mergerfs (2.41+) is tudja, a
+  `passthrough.io` a mergerfs folyamat teljes kihagyásával, közel natív
+  sebességgel olvas/ír. A Diagnosztika észreveszi, ha rendelkezésre áll, és
+  egy gombbal be is kapcsolja — a vele ütköző beállításokat (moveonenospc,
+  írás-összevonás) kikapcsolva és a poolt újracsatolva
 - **Kihasználtsági nézet**: pool- és branch-enkénti (diszkenkénti)
   tárhely-sávok, mint az Unraid Main füle
 - **Élő átkonfigurálás**: felcsatolt pool esetén a branch-lista és a
@@ -240,6 +245,30 @@ aktív swap, és ZFS-gyökér esetén a `findmnt` + `zpool list` alapján
 azonosított pooltagok. Ez utóbbi külön szabály, mert egy `zfs_member`
 partíciónak nincs csatolási pontja, tehát az első kettő nem fogná ki.
 
+### Diagnosztika
+
+Egy gombbal végigfut minden ellenőrzés a poolokon, bind mountokon,
+megosztásokon, diszk-mountokon, systemd egységeken és a lemezalváson. Amit
+biztonságosan meg lehet javítani, azt egy gomb el is végzi (a többinél a
+kimásolható parancs jelenik meg).
+
+A teljesítménnyel kapcsolatos ellenőrzések, mert ezek nem hibaként
+jelentkeznek, hanem csak lassúságként:
+
+- **`cache.files=off`**: a pool gyorsítótár nélkül fut, ami elveszi az mmap
+  támogatást és minden apró írást külön oda-vissza úttá tesz
+- **A futó mount eltér a beállítottól**: néhány mergerfs opciót
+  (írás-összevonás, passthrough) csak felcsatoláskor lehet átvenni, ezért a
+  mentés önmagában nem elég. Ez az ellenőrzés a mergerfs xattr-vezérlőjén
+  keresztül összeveti a *ténylegesen futó* értékeket a mentettekkel — a
+  javítás újracsatolja a poolt, és visszakapcsolja a rá épülő bind
+  mountokat (ezek a pool leállításakor magukkal együtt leállnak)
+- **Elavult mergerfs**: a kernel tudna IO passthrough-t, a telepített
+  mergerfs viszont nem. A disztró csomagja évekkel le szokott maradni
+- **Elérhető IO passthrough**: minden adott hozzá, de a poolon nincs
+  bekapcsolva. A javítás bekapcsolja, kikapcsolja a vele ütközőket
+  (moveonenospc, írás-összevonás), és újracsatol
+
 ## Telepítés
 
 Proxmox VE hoszton (vagy bármely Debian-alapú rendszeren, LXC-ben is), rootként:
@@ -253,6 +282,13 @@ cd proxmox-nas-gui
 Ezután a felület a `https://<hoszt-ip>:8481/` címen érhető el, a belépés a
 hoszt **root** jelszavával történik. (A tanúsítvány önaláírt, a böngésző
 egyszer figyelmeztetni fog.)
+
+A telepítő a mergerfs-t az apt-ból rakja fel, majd — ha a disztró csomagja
+régebbi — felülírja az upstream kiadással. A Debian csomagja évekkel le van
+maradva (bookworm: 2.33.5, trixie: 2.40.2), és ami hiányzik, az számít: a
+`passthrough.io` a 2.41.0-ban jelent meg. A mergerfs saját dokumentációja is
+a releases oldalról való telepítést ajánlja. Ha nincs hálózat, vagy nincs
+build az adott disztróhoz, az apt-os verzió marad és a telepítés folytatódik.
 
 ### Frissítés: változás a pool gyorsítótár-alapértékein
 
@@ -409,8 +445,9 @@ it's ever moved to another machine - with the Proxmox system disk always
 excluded from both lists, build pools from disks/folders with per-branch
 RW/RO/NC modes, create-policy
 presets plus a free-form advanced options field, page-cache settings
-(`cache.files`, `cache.writeback`, `dropcacheonclose`) as first-class
-fields because they are what decides write throughput, per-branch usage bars,
+(`cache.files`, `cache.writeback`, `dropcacheonclose`) and IO passthrough as
+first-class fields because they are what decides write throughput,
+per-branch usage bars,
 live reconfiguration of mounted pools via the mergerfs xattr control
 file, a "create share from this pool" shortcut, and deletion protection
 while shares depend on a pool. Pools are started by generated systemd

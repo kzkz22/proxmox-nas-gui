@@ -131,3 +131,40 @@ def test_fix_delegates_a_disk_check_to_sleep_end_to_end(auth_client, sandbox, st
 
     assert response.status_code == 200
     assert calls == [("smartd", "ata-x")]
+
+
+def test_a_config_changing_fix_is_written_back_to_state(
+    auth_client, stored, sandbox, no_systemd, monkeypatch
+):
+    # Enabling passthrough edits the pool itself, so unlike every other fix
+    # it has to be persisted - otherwise the pool would revert the next time
+    # anything reloaded state.json.
+    stored(pools={"bulk": POOL})
+    monkeypatch.setattr(pool_ops, "write_pool_unit", lambda _p: None)
+    monkeypatch.setattr(pool_ops, "remount_pool", lambda _p: None)
+    monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: True)
+
+    response = auth_client.post(
+        "/api/diagnostics/fix",
+        json={"id": "pool_passthrough_available", "entity": "bulk"},
+    )
+
+    assert response.status_code == 200
+    saved = json.loads((sandbox["PNAS_STATE_DIR"] / "state.json").read_text())
+    assert saved["pools"]["bulk"]["passthrough"] == "rw"
+    assert saved["pools"]["bulk"]["moveonenospc"] is False
+
+
+def test_a_running_system_fix_leaves_state_untouched(
+    auth_client, stored, sandbox, no_systemd, monkeypatch
+):
+    stored(pools={"bulk": POOL})
+    before = (sandbox["PNAS_STATE_DIR"] / "state.json").read_text()
+    monkeypatch.setattr(pool_ops, "remount_pool", lambda _p: None)
+
+    response = auth_client.post(
+        "/api/diagnostics/fix", json={"id": "pool_needs_remount", "entity": "bulk"}
+    )
+
+    assert response.status_code == 200
+    assert (sandbox["PNAS_STATE_DIR"] / "state.json").read_text() == before

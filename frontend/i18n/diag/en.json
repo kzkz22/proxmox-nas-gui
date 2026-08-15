@@ -29,6 +29,17 @@
   "diagfinding.pool_not_mounted.confirm": "Pool “{pool}” will be mounted. Continue?",
 
   "diagfinding.pool_cache_files_off.title": "Pool “{pool}” runs without a page cache (cache.files=off)",
+  "diagfinding.mergerfs_outdated.title": "The installed mergerfs ({installed}) is older than the kernel could use",
+  "diagfinding.mergerfs_outdated.body": "The running kernel ({kernel}) supports FUSE IO passthrough, but the installed mergerfs does not - that needs {needed} or newer. Under passthrough the kernel reads and writes the branch file directly, skipping the mergerfs process entirely, which gives near native speed; without it every read and write makes the round trip through mergerfs. It shows up most on programs that write in small pieces, such as a torrent client. Distribution packages are typically years behind; mergerfs's own documentation recommends installing from the releases page rather than via apt. After upgrading, Diagnostics will offer to turn it on with one click.",
+
+  "diagfinding.pool_needs_remount.title": "Pool “{pool}” is not running what is configured",
+  "diagfinding.pool_needs_remount.body": "The running mergerfs differs from the saved settings in: {options}. Some options (write aggregation, passthrough) can only be adopted when the filesystem is mounted, so saving alone is not enough - until then the pool keeps running the old settings, and any measurement measures the old state. The fix remounts the pool and brings the bind mounts on top of it back up afterwards (they are stopped along with the pool).",
+  "diagfinding.pool_needs_remount.confirm": "Pool “{pool}” will be remounted and the bind mounts on top of it brought back up. Shares will be unreachable for a few seconds. Continue?",
+
+  "diagfinding.pool_passthrough_available.title": "Pool “{pool}” could use IO passthrough",
+  "diagfinding.pool_passthrough_available.body": "Both the kernel and the installed mergerfs support FUSE IO passthrough, but it is not enabled on this pool. With it on, the kernel reads and writes the branch file directly, skipping the mergerfs process - the largest available win for small, scattered writes. It has a cost: moveonenospc does not work under it (mergerfs never sees the writes, so it cannot see a branch fill up), and write aggregation cannot be used alongside it. The fix enables passthrough, turns off what it conflicts with, and remounts the pool.",
+  "diagfinding.pool_passthrough_available.confirm": "IO passthrough (rw) will be enabled on pool “{pool}”. This turns off moveonenospc and write aggregation, and remounts the pool. Continue?",
+
   "diagfinding.pool_cache_files_off.body": "In this mode mergerfs works in direct_io: no kernel page cache, and no shared mmap support either. That has two visible consequences. Programs that use mmap (qBittorrent/libtorrent 2.x, sqlite-based applications) fail outright or fall back to a slower mode. And programs that write in small pieces pay a separate round trip into the mergerfs process for every single write, which can drop write throughput to a fraction of what the disk can do. Unless you chose this specifically to keep RAM use down, set the file page cache to “auto-full” in the pool editor.",
 
   "diagfinding.bind_source_missing.title": "Bind mount “{bind}”'s source does not exist: {path}",

@@ -68,8 +68,9 @@
       "minfreespace": "20G",
       "moveonenospc": false,
       "cache_files": "full",
-      "cache_writeback": true,
+      "cache_writeback": false,
       "dropcacheonclose": true,
+      "passthrough": "rw",
       "extra_options": "func.getattr=newest"
     }
   },

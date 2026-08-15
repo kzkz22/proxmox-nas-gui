@@ -45,10 +45,31 @@ def mergerfs_options(pool: Pool) -> str:
                        and the branch filesystem's cache) at the cost of
                        throwing away cache a re-reader would have used.
 
+    passthrough is the fourth, and only appears once switched on - see
+    merged_options() for why. It is the one setting that removes the round
+    trip rather than amortising it: the kernel talks to the branch file
+    directly, at the cost of moveonenospc.
+
     Options are merged by key rather than concatenated: if extra_options
     sets a key the GUI also sets (e.g. cache.files), the extra_options
     value wins instead of producing a duplicate `key=value` pair, which
     mergerfs would otherwise receive verbatim with an ambiguous winner.
+    """
+    return ",".join(
+        f"{key}={value}" if value is not None else key
+        for key, value in merged_options(pool).items()
+    )
+
+
+def merged_options(pool: Pool) -> Dict[str, Optional[str]]:
+    """The effective option map, keyed by option name, in emission order.
+
+    Split out from mergerfs_options() so a caller can ask about one option
+    without re-parsing the joined string - the drift check compares individual
+    values against what the running mount reports, and extra_options means the
+    value for a key is not always the one the matching field holds.
+
+    A valueless option (allow_other) maps to None.
     """
     defaults = [
         "allow_other",
@@ -60,14 +81,16 @@ def mergerfs_options(pool: Pool) -> str:
         f"moveonenospc={'true' if pool.moveonenospc else 'false'}",
         f"fsname={pool.name}",
     ]
-    merged: Dict[str, str] = {}
-    order: List[str] = []
+    # Only emitted when actually enabled: mergerfs rejects options it does not
+    # know, and passthrough arrived in 2.41. Writing passthrough=off would
+    # make every pool fail to mount on the 2.40 that Debian 13 still ships.
+    if pool.passthrough != "off":
+        defaults.insert(4, f"passthrough={pool.passthrough}")
+    merged: Dict[str, Optional[str]] = {}
     for opt in defaults + (pool.extra_options.split(",") if pool.extra_options else []):
-        key = opt.split("=", 1)[0]
-        if key not in merged:
-            order.append(key)
-        merged[key] = opt
-    return ",".join(merged[key] for key in order)
+        key, sep, value = opt.partition("=")
+        merged[key] = value if sep else None
+    return merged
 
 
 def branches_spec(pool: Pool) -> str:
