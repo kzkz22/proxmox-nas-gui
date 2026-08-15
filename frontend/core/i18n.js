@@ -2,7 +2,7 @@ const STORAGE_KEY = "pnas_lang";
 
 // One file per package, merged on load. The dictionaries are flat maps of
 // dotted keys, so a plain merge is enough - nesting them would break t().
-const BUNDLES = ["core", "samba", "storage"];
+const BUNDLES = ["core", "samba", "storage", "diag"];
 
 let lang = localStorage.getItem(STORAGE_KEY) || "hu";
 let dict = {};

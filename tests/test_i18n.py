@@ -13,12 +13,12 @@ import pytest
 
 FRONTEND = Path(__file__).resolve().parents[1] / "frontend"
 I18N = FRONTEND / "i18n"
-BUNDLES = ("core", "samba", "storage")
+BUNDLES = ("core", "samba", "storage", "diag")
 LANGS = ("en", "hu")
 
 # The full key set before the per-package split. The union of the split files
 # must still equal this, so the split provably lost nothing.
-EXPECTED_KEY_COUNT = 350
+EXPECTED_KEY_COUNT = 408
 
 
 def load(bundle: str, lang: str) -> dict:
@@ -102,5 +102,5 @@ def test_every_page_in_the_registry_has_a_nav_label():
     registry = "".join(p.read_text() for p in FRONTEND.rglob("pages.js"))
     ids = re.findall(r'id:\s*"(\w+)"', registry)
     nav_keys = re.findall(r'navKey:\s*"([\w.]+)"', registry)
-    assert len(ids) == len(nav_keys) == 7
+    assert len(ids) == len(nav_keys) == 8
     assert set(nav_keys) <= set(merged("hu"))

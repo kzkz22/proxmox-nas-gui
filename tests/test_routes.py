@@ -63,6 +63,8 @@ EXPECTED_ROUTES = {
     ("GET", "/api/sleep/temps/history"),
     ("POST", "/api/sleep/fix"),
     ("POST", "/api/sleep/takeover"),
+    ("GET", "/api/diagnostics"),
+    ("POST", "/api/diagnostics/fix"),
 }
 
 # Reachable without a session, by design.

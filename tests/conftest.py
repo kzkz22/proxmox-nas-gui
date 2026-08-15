@@ -6,12 +6,13 @@ test client can be pointed entirely at a tmp_path and never touch the host's
 than going through PAM.
 """
 
+import os
 import time
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core import auth
+from app.core import auth, fsops
 from app.main import app
 
 # Kept in sync with the env vars documented in the README.
@@ -81,3 +82,40 @@ def auth_client(client):
     client.cookies.set(auth.SESSION_COOKIE, token)
     yield client
     auth._sessions.pop(token, None)
+
+
+@pytest.fixture
+def stub_chown(monkeypatch):
+    """Replace the chown half of apply_share_perms with a recorder.
+
+    Ownership changes to a *different* user require root - the real app runs
+    as root, but the test runner does not, so a live chown would fail here
+    for a reason that has nothing to do with what these tests check. chmod on
+    a file the test process already owns needs no such privilege, so that
+    half still runs for real.
+    """
+    calls = []
+    monkeypatch.setattr(
+        fsops.shutil, "chown",
+        lambda path, user=None, group=None: calls.append((str(path), user, group)),
+    )
+    return calls
+
+
+@pytest.fixture
+def stub_nobody(monkeypatch):
+    """Make "nobody:nogroup" resolve to the test process's own uid/gid.
+
+    diagnostics._wrong_perms() decides "correct ownership" by comparing a
+    path's uid/gid against pwd.getpwnam("nobody")/grp.getgrnam("nogroup").
+    Without root, a test can never chown a directory it creates to the real
+    nobody account, so a directory this test owns would always read as
+    "wrong" - this patches the target identity down to whoever is running the
+    suite instead, so a plain 0o777-chmodded directory reads as correct.
+    """
+    from app import diagnostics as diag
+
+    pwd_result = type("PwEnt", (), {"pw_uid": os.getuid()})()
+    grp_result = type("GrEnt", (), {"gr_gid": os.getgid()})()
+    monkeypatch.setattr(diag.pwd, "getpwnam", lambda name: pwd_result)
+    monkeypatch.setattr(diag.grp, "getgrnam", lambda name: grp_result)
