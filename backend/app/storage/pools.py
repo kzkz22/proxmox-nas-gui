@@ -259,68 +259,80 @@ def remount_pool(pool: Pool) -> None:
     mount_pool(pool)
 
 
-def runtime_update(pool: Pool, old: Optional[Pool] = None) -> Optional[str]:
-    """Push the new branch list and tunables into a mounted pool via the
-    mergerfs xattr control file, so edits apply without a remount. Returns
-    a warning string when that fails (changes then apply on next remount)."""
+# Negotiated with the kernel when the FUSE connection is established, so a
+# running mergerfs cannot adopt them however they are asked. Everything else
+# the GUI writes goes through the control file.
+MOUNT_TIME_OPTIONS = ("cache.writeback", "passthrough")
+
+# Set through the control file rather than derived from a Pool field, because
+# the value that wins may have come from extra_options.
+RUNTIME_OPTIONS = ("category.create", "minfreespace", "moveonenospc",
+                   "cache.files", "dropcacheonclose")
+
+
+def runtime_update(pool: Pool) -> dict:
+    """Push everything the running pool can adopt through the mergerfs xattr
+    control file, so a save applies without a remount.
+
+    Returns {"warning": str|None, "remount_needed": [str]}. The second is the
+    options the live pool is not running and cannot be made to run without
+    reconnecting - what the caller offers to remount for.
+    """
     if not is_mounted(pool.mountpoint):
-        return None
+        return {"warning": None, "remount_needed": []}
     ctl = os.path.join(pool.mountpoint, XATTR_CTL)
+    wanted = poolconf.merged_options(pool)
     try:
         os.setxattr(ctl, "user.mergerfs.branches",
                     poolconf.branches_spec(pool).encode())
-        os.setxattr(ctl, "user.mergerfs.category.create",
-                    pool.create_policy.encode())
-        os.setxattr(ctl, "user.mergerfs.minfreespace",
-                    pool.minfreespace.encode())
-        os.setxattr(ctl, "user.mergerfs.moveonenospc",
-                    (b"true" if pool.moveonenospc else b"false"))
-        os.setxattr(ctl, "user.mergerfs.cache.files",
-                    pool.cache_files.encode())
-        os.setxattr(ctl, "user.mergerfs.dropcacheonclose",
-                    (b"true" if pool.dropcacheonclose else b"false"))
+        for key in RUNTIME_OPTIONS:
+            value = wanted.get(key)
+            if value is not None:
+                os.setxattr(ctl, f"user.mergerfs.{key}", value.encode())
     except OSError as exc:
-        return (
-            "fstab updated, but the live pool could not be reconfigured "
-            f"({exc}); changes take effect after a remount"
-        )
-    return remount_only_warning(pool, old, ctl)
+        return {
+            "warning": (
+                "saved, but the live pool could not be reconfigured "
+                f"({exc}); changes take effect after a remount"
+            ),
+            "remount_needed": [],
+        }
+    return {"warning": None, "remount_needed": remount_needed(pool, ctl)}
 
 
-def remount_only_warning(pool: Pool, old: Optional[Pool], ctl: str) -> Optional[str]:
-    """Warn about changed settings that a running mergerfs cannot pick up.
+def remount_needed(pool: Pool, ctl: str) -> List[str]:
+    """Which of this pool's options the running mergerfs is not honouring.
 
-    cache.writeback is negotiated with the kernel when the FUSE connection is
-    established, so unlike every other option the GUI writes it cannot be
-    changed through the control file - the save would otherwise look like it
-    took effect while the pool kept running the old setting, which is exactly
-    the kind of silent no-op that sends someone benchmarking a setting they
-    are not actually running. extra_options gets the same treatment for a
-    different reason: the GUI does not know which of the keys a user typed
-    there are runtime-settable, so it does not guess.
+    Two sources. The mount-time options are compared against what the live
+    pool reports, so a pool that has been running the wrong setting is caught
+    whether or not this particular save is what changed it.
 
-    Only *changes* are reported. A save that leaves these fields alone has
-    nothing to warn about, however they are set.
+    Everything a user typed into extra_options is *tried* rather than guessed
+    about. mergerfs exposes most options through the control file, but not
+    all, and the GUI has no list of which - so it pushes each one and reports
+    only those the running pool actually refused. Telling someone to remount
+    for cache.attr, which applies instantly, is its own kind of wrong.
     """
-    if old is None:
-        return None
     stale: List[str] = []
-    if pool.cache_writeback != old.cache_writeback:
-        want = "true" if pool.cache_writeback else "false"
+    wanted = poolconf.merged_options(pool)
+    for key in MOUNT_TIME_OPTIONS:
+        want = wanted.get(key, "off" if key == "passthrough" else "false")
+        live = live_option(pool.mountpoint, key)
+        if live is not None and live != want:
+            stale.append(f"{key}={want}")
+    for opt in (pool.extra_options.split(",") if pool.extra_options else []):
+        key = opt.split("=", 1)[0]
+        if key in MOUNT_TIME_OPTIONS or key in RUNTIME_OPTIONS:
+            continue  # already handled above, and already reported if stale
+        value = wanted.get(key)
+        if value is None:
+            stale.append(key)  # a bare flag; nothing to push at runtime
+            continue
         try:
-            live = os.getxattr(ctl, "user.mergerfs.cache.writeback").decode().strip()
+            os.setxattr(ctl, f"user.mergerfs.{key}", value.encode())
         except OSError:
-            live = ""  # not readable on this mergerfs; trust the stored value
-        if live != want:
-            stale.append(f"cache.writeback={want}")
-    if pool.extra_options != old.extra_options:
-        stale.extend(opt for opt in pool.extra_options.split(",") if opt)
-    if not stale:
-        return None
-    return (
-        "saved, but these options only take effect after remounting the "
-        f"pool: {', '.join(stale)}"
-    )
+            stale.append(f"{key}={value}")
+    return stale
 
 
 def pool_info(pool: Pool) -> dict:

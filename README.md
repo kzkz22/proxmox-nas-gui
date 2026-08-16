@@ -79,7 +79,12 @@ Unraid array), and share it immediately.
   Unraid's Main tab
 - **Live reconfiguration**: for a mounted pool, the branch list and settings
   take effect immediately through mergerfs's xattr control file, no remount
-  needed — a pool can grow even while Samba is using it
+  needed — a pool can grow even while Samba is using it. Options typed into
+  the advanced field are applied live too, and only the ones the running
+  mergerfs actually refused are reported back
+- **Offered remount**: when a setting can only be read at mount time
+  (`cache.writeback`, `passthrough`), the GUI asks after saving whether to
+  remount the pool — and if so, brings the bind mounts on top of it back up
 - **"Create share from this pool" button**: opens the share editor
   pre-filled with the pool's mountpoint
 - **Deletion protection**: a pool can't be deleted or unmounted while a share

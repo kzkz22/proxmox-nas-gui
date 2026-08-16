@@ -1,9 +1,8 @@
-from typing import Optional
-
 from fastapi import APIRouter, HTTPException
 
 from ...core import state as state_store
 from ...core.deps import blockers_for_path
+from ...core.proc import SystemOpError
 from .. import binds, pools
 from ..models import Pool
 
@@ -24,20 +23,26 @@ def _bind_blockers(st, mountpoint: str) -> None:
         )
 
 
-def _save_and_apply(
-    st, pool: Pool, was_mounted: bool, old: Optional[Pool] = None
-) -> dict:
+def _save_and_apply(st, pool: Pool, was_mounted: bool) -> dict:
+    """Save, then make the running system match as far as it can.
+
+    `remount_needed` names the options the live pool could not adopt. It is
+    returned separately from `warning` rather than folded into the text
+    because the client offers to do the remount, and an offer needs to know
+    what it is offering - see POST /pools/{name}/remount.
+    """
     pools.write_pool_unit(pool)
     state_store.save_state(st)
-    warning = None
+    warning, remount_needed = None, []
     if was_mounted:
-        warning = pools.runtime_update(pool, old)
+        result = pools.runtime_update(pool)
+        warning, remount_needed = result["warning"], result["remount_needed"]
     else:
         try:
             pools.mount_pool(pool)
         except Exception as exc:
             warning = f"pool saved, but mount failed: {exc}"
-    return {"ok": True, "warning": warning}
+    return {"ok": True, "warning": warning, "remount_needed": remount_needed}
 
 
 @router.get("")
@@ -77,7 +82,7 @@ def update_pool(name: str, pool: Pool):
         orphaned = pools.orphaned_binds(st, old, pool)
         was_mounted = pools.is_mounted(pool.mountpoint)
         st.pools[name] = pool
-        result = _save_and_apply(st, pool, was_mounted, old)
+        result = _save_and_apply(st, pool, was_mounted)
         if orphaned:
             note = (
                 "removing branch(es) will hide the source of bind mount(s) "
@@ -105,6 +110,27 @@ def delete_pool(name: str):
         del st.pools[name]
         state_store.save_state(st)
         return {"ok": True}
+
+
+@router.post("/{name}/remount")
+def remount_pool(name: str):
+    """Stop and start the pool, then bring its bind mounts back up.
+
+    Offered right after a save that could not be applied to the running pool,
+    so the user does not have to know that some mergerfs options are only
+    read when the FUSE connection is established. The unit is rewritten first
+    (inside remount_pool_with_binds) so the remount runs the current config
+    rather than whatever was last written to disk.
+    """
+    st = state_store.load_state()
+    pool = st.pools.get(name)
+    if not pool:
+        raise HTTPException(404, "no such pool")
+    try:
+        restarted = binds.remount_pool_with_binds(st, pool)
+    except SystemOpError as exc:
+        raise HTTPException(409, str(exc))
+    return {"ok": True, "binds_restarted": restarted}
 
 
 @router.post("/{name}/mount")

@@ -113,6 +113,8 @@
   "pool.passthroughHint": "The kernel reads and writes the branch file directly, skipping the mergerfs process entirely — near native speed. Needs kernel 6.9+ and mergerfs 2.41+; without them the pool will fail to mount. While on, moveonenospc does not work (mergerfs never sees the writes, so it cannot see them run out of space) and write aggregation cannot be used alongside it. Takes effect on mount only.",
   "pool.policy": "Create policy (where new files go)",
   "pool.quickAdd": "Quick add:",
+  "pool.remountPrompt": "Saved. These settings only take effect after remounting: {options}\n\nRemount the pool now? The bind mounts on top of it are brought back up too. Shares will be unreachable for a few seconds.",
+  "pool.remounted": "Pool remounted, bind mounts brought back up.",
   "pool.unmount": "Unmount",
   "pools.add": "Add pool",
   "pools.disksTitle": "Disks",

@@ -302,6 +302,17 @@ export function poolForm(name) {
         ? api("/pools", { method: "POST", body })
         : api(`/pools/${encodeURIComponent(name)}`, { method: "PUT", body }));
     reportResult(res);
+    // Some mergerfs options are only read when the FUSE connection is set up,
+    // so the save could not apply them to the running pool. Rather than
+    // leaving the user to work out where remounting lives, offer it here.
+    if (res && res.remount_needed && res.remount_needed.length) {
+      const opts = res.remount_needed.join(", ");
+      if (await confirmDialog(t("pool.remountPrompt", { options: opts }))) {
+        const r = await guard(() =>
+          api(`/pools/${encodeURIComponent(body.name)}/remount`, { method: "POST" }));
+        if (r) toast(t("pool.remounted"), "ok");
+      }
+    }
     await refreshState();
     location.hash = "#/pools";
   });

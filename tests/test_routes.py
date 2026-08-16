@@ -39,6 +39,7 @@ EXPECTED_ROUTES = {
     ("POST", "/api/pools"),
     ("PUT", "/api/pools/{name}"),
     ("DELETE", "/api/pools/{name}"),
+    ("POST", "/api/pools/{name}/remount"),
     ("POST", "/api/pools/{name}/mount"),
     ("POST", "/api/pools/{name}/unmount"),
     ("GET", "/api/disks"),

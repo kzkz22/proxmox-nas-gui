@@ -82,7 +82,13 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
   tárhely-sávok, mint az Unraid Main füle
 - **Élő átkonfigurálás**: felcsatolt pool esetén a branch-lista és a
   beállítások a mergerfs xattr-vezérlőjén át azonnal érvényre jutnak,
-  újracsatolás nélkül — Samba-használat közben is bővíthető a pool
+  újracsatolás nélkül — Samba-használat közben is bővíthető a pool. A
+  haladó mezőbe írt opciókat is megpróbálja élőben alkalmazni, és csak
+  azokról szól, amiket a futó mergerfs ténylegesen visszautasított
+- **Felajánlott újracsatolás**: ha egy beállítás csak felcsatoláskor
+  olvasható (`cache.writeback`, `passthrough`), a mentés után a GUI
+  megkérdezi, újracsatolja-e a poolt — és ha igen, a rá épülő bind
+  mountokat is visszakapcsolja
 - **„Megosztás létrehozása ebből a poolból”** gomb: a share-szerkesztő a
   pool csatolási pontjával előtöltve nyílik
 - **Törlésvédelem**: amíg egy megosztás a poolra mutat, a pool nem
