@@ -1,4 +1,9 @@
 -r requirements.txt
-pytest>=7.0
-# TestClient dependency for the API-level tests
-httpx>=0.27
+# Pinned for the same reason as the runtime set next door, and with the same
+# update routine: a floating test toolchain makes a green suite mean something
+# slightly different every time it runs.
+pytest==9.1.1
+# TestClient dependency for the API-level tests. Starlette already warns that
+# it wants httpx2 here, so this is exactly the line that would drift away on
+# its own.
+httpx==0.28.1

@@ -399,6 +399,18 @@ együtt naplózódnak, tehát a `journalctl -u proxmox-nas-gui` grepelhető, és
 fail2ban-nak is van mire illesztenie. A számlálók a memóriában élnek, a
 szolgáltatás újraindítása törli őket.
 
+**A cross-site kéréseket két rétegben utasítja el.** A session süti
+`SameSite=Lax`, tehát a böngésző eleve nem csatolja egy cross-site íráshoz.
+Ezen felül minden `POST`/`PUT`/`PATCH`/`DELETE` ellenőrzésre kerül: ha a kérés
+olyan `Origin` fejlécet hoz, ami nem egyezik a megcímzett hoszttal, 403-mal
+elutasul, még mielőtt a session egyáltalán szóba kerülne. Az olvasások
+kivételt képeznek — `GET`-re itt semmi nem változtat állapotot. Az `Origin`
+nélküli kérések átmennek, tehát a `curl` és a szkriptek működnek tovább; egy
+CSRF-támadást indító oldal nem tudja elhagyni ezt a fejlécet, így a hiánya nem
+olyan eset, amit a támadás elő tudna idézni. Ha reverse proxy mögött fut, ami
+más néven szolgálja ki a felületet, mint amit továbbít, vedd fel a publikus
+origint a `PNAS_TRUSTED_ORIGINS` változóba.
+
 **A sessionök a memóriában vannak.** A session süti `HttpOnly`, `Secure` és
 `SameSite=Lax`; a mögötte lévő token a futó processz egyik szótárában van, nem
 a lemezen. Ez az egy-worker telepítésből következik: a szolgáltatás
@@ -443,6 +455,7 @@ végző reverse proxyt, és korlátozd a forráscímeket a tűzfalon.
 | Változó | Alapértelmezés | Leírás |
 |---|---|---|
 | `PNAS_ADMIN_USERS` | `root` | GUI-ba beléphető rendszerfelhasználók (vesszővel elválasztva) |
+| `PNAS_TRUSTED_ORIGINS` | – | További elfogadott originek az állapotváltó kérésekhez, pl. `https://nas.example.com` (vesszővel elválasztva). Csak akkor kell, ha reverse proxy mögött fut, ami más néven szolgálja ki a felületet, mint amit továbbít |
 | `PNAS_STATE_DIR` | `/etc/proxmox-nas-gui` | A state.json könyvtára |
 | `PNAS_SMB_CONF` | `/etc/samba/smb.conf` | A fő Samba konfig |
 | `PNAS_GEN_CONF` | `/etc/samba/proxmox-nas-gui.conf` | A generált konfig helye |
@@ -470,6 +483,24 @@ cd backend && ../venv/bin/uvicorn app.main:app --reload   # dev szerver
 
 A `pytest` a repó gyökeréből fut; a `backend/` könyvtárat a `pyproject.toml`
 teszi az import útvonalra.
+
+### Függőségek verziói
+
+A `backend/requirements.txt` pontos verziókat rögzít, nem alsó határokat. A
+telepítő rootként futtatja a `pip`-et egy éles hoszton, tehát a „bármi, ami ma
+a legfrissebb" döntené el, miből épül fel egy rootként futó szolgáltatás — és
+ez már el is sodródott egyszer: a `fastapi>=0.110` alsó határ egy 1.x-be lépett
+Starlette-et hozott be. A `starlette` és a `pydantic` akkor is rögzítve van, ha
+közvetlenül semmi nem importálja őket, mert a FastAPI felső határ nélkül kéri
+mindkettőt — így bármelyikük major kiadása úgy érkezik meg, hogy közben a
+FastAPI verziója nem változik.
+
+Frissítés menete: feloldás és telepítés friss venvbe, teljes tesztfuttatás,
+majd a verziók átírása egy commitban. Két korlátot érdemes kimondani: ez
+telepítési determinizmus, nem lockfile (a tranzitív gráf többi része továbbra
+is mozog, és semmi nincs hash-sel ellenőrizve), és a rögzített verziók
+maguktól nem kapják meg az upstream biztonsági javításokat — a frissítés tehát
+feladat, nem mellékhatás.
 
 ### Felépítés
 

@@ -396,6 +396,17 @@ and source address, so `journalctl -u proxmox-nas-gui` is greppable and
 fail2ban has something to match. The counters live in memory and a service
 restart clears them.
 
+**Cross-site requests are refused twice over.** The session cookie is
+`SameSite=Lax`, so a browser will not attach it to a cross-site write in the
+first place. On top of that, every `POST`/`PUT`/`PATCH`/`DELETE` is checked:
+if the request carries an `Origin` header that does not match the host it was
+sent to, it is refused with a 403 before the session is even looked at. Reads
+are exempt — nothing here changes state on a `GET`. Requests with no `Origin`
+at all are allowed, so `curl` and scripts keep working; a page mounting a CSRF
+attack cannot suppress that header, so its absence is not a case the attack
+can arrange. Behind a reverse proxy that serves the UI under a different name
+than it forwards, list the public origin in `PNAS_TRUSTED_ORIGINS`.
+
 **Sessions live in memory.** The session cookie is `HttpOnly`, `Secure` and
 `SameSite=Lax`; the token behind it is kept in a dictionary in the running
 process, not on disk. This follows from the single-worker deployment: a
@@ -439,6 +450,7 @@ and rate limiting, and restrict the source addresses at the firewall.
 | Variable | Default | Description |
 |---|---|---|
 | `PNAS_ADMIN_USERS` | `root` | System users allowed to log into the GUI (comma-separated) |
+| `PNAS_TRUSTED_ORIGINS` | – | Extra origins accepted for state-changing requests, e.g. `https://nas.example.com` (comma-separated). Only needed behind a reverse proxy that serves the UI under a different name than it forwards |
 | `PNAS_STATE_DIR` | `/etc/proxmox-nas-gui` | Directory for state.json |
 | `PNAS_SMB_CONF` | `/etc/samba/smb.conf` | The main Samba config |
 | `PNAS_GEN_CONF` | `/etc/samba/proxmox-nas-gui.conf` | Where the generated config is written |
@@ -466,6 +478,23 @@ cd backend && ../venv/bin/uvicorn app.main:app --reload   # dev server
 
 `pytest` runs from the repo root; `pyproject.toml` puts `backend/` on the
 import path.
+
+### Dependency versions
+
+`backend/requirements.txt` pins exact versions rather than floors. The
+installer runs `pip` as root on a live host, so "whatever is newest today"
+would decide what a root-running service is built from — and it had already
+drifted once: a `fastapi>=0.110` floor was resolving to a Starlette that had
+gone 1.x. `starlette` and `pydantic` are pinned too even though nothing
+imports them directly, because FastAPI asks for them without an upper bound,
+so a major release of either arrives without FastAPI changing at all.
+
+To update: resolve and install into a fresh venv, run the full suite, then
+change the versions in one commit. Two limits worth stating — this is
+installation determinism, not a lockfile (the rest of the transitive graph
+still floats and nothing is hash-verified), and pinned versions do not pick up
+upstream security fixes on their own, so the update is a task rather than a
+side effect.
 
 ### Structure
 
