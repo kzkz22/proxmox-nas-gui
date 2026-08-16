@@ -1,277 +1,280 @@
 # Proxmox NAS GUI
-AI kódolással készült / AI generated code!
+AI-generated code!
 
-Unraid-stílusú SMB (Samba) megosztás- és **mergerfs pool**-kezelő webes
-felület Proxmox VE-hez. *(English summary below.)*
+🇭🇺 Magyar leírás: [README.hu.md](README.hu.md)
 
-A Proxmox-ból hiányzik az Unraid kényelmes, kattintható Samba-kezelése. Ez a
-projekt ezt pótolja: megosztásokat, felhasználókat és csoportokat hozhatsz
-létre pár kattintással, az Unraidből ismert **Export** és **Security**
-(Public / Secure / Private) modellel — kiegészítve csoportkezeléssel, amely
-az Unraidben nincs is. Emellett [mergerfs](https://github.com/trapexit/mergerfs)
-poolokat is kezel: több diszket/mappát fűzhetsz össze egyetlen nagy
-fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
+An Unraid-style SMB (Samba) share and **mergerfs pool** manager, as a web
+UI, for Proxmox VE.
 
-![Megosztások lista](docs/shares.png)
+Proxmox has nothing like Unraid's convenient, click-to-configure Samba
+management. This project fills that gap: create shares, users and groups in
+a few clicks, with the same **Export** and **Security** (Public / Secure /
+Private) model Unraid uses — plus group management, which Unraid itself
+doesn't have. It also manages [mergerfs](https://github.com/trapexit/mergerfs)
+pools: combine several disks/folders into one large filesystem (like the
+Unraid array), and share it immediately.
 
-## Funkciók
+![Shares list](docs/en/shares.png)
 
-- **Megosztások**: létrehozás/szerkesztés/törlés, útvonal-tallózóval;
-  új mappa vagy **ZFS dataset** létrehozása közvetlenül a felületről
-- **Export**: `Nem` / `Igen` / `Igen (rejtett)` — a rejtett megosztás működik,
-  de nem látszik a hálózat tallózásakor
-- **Hálózati böngészés Windows alatt**: a telepítő az `smbd` mellett az
-  `nmbd`-t (NetBIOS böngészés) és a `wsdd2`-t (WS-Discovery) is elindítja,
-  hogy a gép megjelenjen a Windows Intéző "Hálózat" nézetében — enélkül a
-  megosztások `\\<IP>\<megosztás>` útvonallal kézzel elérhetők, csak a
-  böngészős lista nem mutatja a gépet
-- **Biztonsági módok** (az Unraid pontos megfelelői):
-  - **Publikus** — bárki, jelszó nélkül, írás/olvasás
-  - **Védett (Secure)** — vendégek olvashatnak, írásjog felhasználónként /
-    csoportonként adható (`write list`)
-  - **Privát** — csak a kijelölt felhasználók/csoportok
-    (`valid users` + `write list`)
-- **Felhasználók**: rendszer- + Samba-felhasználó egy lépésben
-  (`useradd` + `smbpasswd`), jelszóváltás, törléskor teljes takarítás
-- **Csoportok**: POSIX csoportok tagságkezeléssel, a jogosultsági mátrixban
-  `@csoport` néven
-- **Jogosultsági mátrix mindkét irányból**: a megosztás oldalán a
-  felhasználók/csoportok listája, a felhasználó/csoport oldalán a
-  megosztások listája — ugyanaz az adat két nézetben
-- **Lomtár** megosztásonként (`vfs_recycle`): a hálózatról törölt fájlok a
-  `.Recycle.Bin`-be kerülnek, a felületről üríthető
-- **Lemezalvás-kezelés**: lemezenként állítható tétlenségi idő, kézi
-  altatás, kereshető állapotnapló és figyelmeztetés arról, mi tartja ébren
-  az adott lemezt (lásd lentebb)
-- **Kétnyelvű felület** (magyar/angol, egy kattintással váltható)
-- **PAM bejelentkezés** a hoszt root jelszavával, HTTPS-en
+## Features
 
-### mergerfs poolok
+- **Shares**: create/edit/delete, with a path browser; create a new folder or
+  a **ZFS dataset** directly from the UI
+- **Export**: `No` / `Yes` / `Yes (hidden)` — a hidden share still works, it
+  just doesn't show up when browsing the network
+- **Network browsing on Windows**: the installer starts `nmbd` (NetBIOS
+  browsing) and `wsdd2` (WS-Discovery) alongside `smbd`, so the host actually
+  shows up in Windows Explorer's "Network" view — without them the shares are
+  still reachable by typing `\\<IP>\<share>`, they just don't appear in the
+  browse list
+- **Security modes** (exact equivalents of Unraid's):
+  - **Public** — anyone, no password, read/write
+  - **Secure** — guests can read, write access is granted per user/group
+    (`write list`)
+  - **Private** — only the selected users/groups (`valid users` + `write list`)
+- **Users**: system + Samba account in one step (`useradd` + `smbpasswd`),
+  password changes, full cleanup on deletion
+- **Groups**: POSIX groups with membership management, shown as `@group` in
+  the access matrix
+- **Access matrix from both directions**: the list of users/groups on a
+  share's page, the list of shares on a user's/group's page — same data, two
+  views
+- **Per-share recycle bin** (`vfs_recycle`): files deleted over the network go
+  into `.Recycle.Bin`, emptyable from the UI
+- **Disk sleep management**: per-disk idle timeout, manual spin-down, a
+  searchable state log, and a warning about what is keeping a given disk
+  awake (see below)
+- **Bilingual interface** (Hungarian/English, switchable with one click)
+- **PAM login** with the host's root password, over HTTPS
 
-- **Pool létrehozás/szerkesztés**: branch-ek (diszkek/mappák) hozzáadása
-  tallózóval vagy egy kattintással a kezelt diszk-mountokból, branch-enként
-  RW / RO (csak olvasás) / NC (nincs új fájl) móddal
-- **Diszkek felcsatolása** a felületről: a GUI listázza a fájlrendszerrel
-  rendelkező, még nem csatolt partíciókat, és fstab-bejegyzéssel
-  a `/mnt/disks/<név>` alá csatolja őket
-- **Üres lemezek/partíciók formázása**: a fájlrendszer nélküli eszközök
-  külön listában jelennek meg; a felhasználó ext4 vagy xfs fájlrendszert
-  választhat, a GUI `wipefs`+`mkfs`-sel formázza (partíciós tábla
-  létrehozása nélkül, közvetlenül az eszközre), majd azonnal fel is
-  csatolja. A Proxmox rendszerlemez (és minden rajta lévő partíció/LVM
-  kötet) sosem jelenik meg egyik listában sem
-- **Presetek + haladó mező**: create policy (mfs, epmfs, ff, pfrd, …) rövid
-  magyarázatokkal, minimális szabad hely, `moveonenospc`, plusz szabad
-  szöveges mező bármely további mergerfs opcióhoz
-- **Gyorsítótár-beállítások** külön mezőkön, mert ezek döntik el az írási
-  sebességet: `cache.files` (alapból `auto-full`), `cache.writeback`
-  (kis írások összevonása) és `dropcacheonclose`. A `cache.files=off`
-  direct_io-t jelent — nincs lapgyorsítótár és nincs osztott mmap sem,
-  amitől az mmap-ot használó programok (qBittorrent/libtorrent 2.x,
-  sqlite) hibára futnak, az apró darabokban írók pedig a lemez
-  képességének töredékét hozzák. A Diagnosztika külön figyelmeztet rá,
-  ha egy pool mégis így fut
-- **IO passthrough**: ha a kernel (6.9+) és a mergerfs (2.41+) is tudja, a
-  `passthrough.io` a mergerfs folyamat teljes kihagyásával, közel natív
-  sebességgel olvas/ír. A Diagnosztika észreveszi, ha rendelkezésre áll, és
-  egy gombbal be is kapcsolja — a vele ütköző beállításokat (moveonenospc,
-  írás-összevonás) kikapcsolva és a poolt újracsatolva
-- **Kihasználtsági nézet**: pool- és branch-enkénti (diszkenkénti)
-  tárhely-sávok, mint az Unraid Main füle
-- **Élő átkonfigurálás**: felcsatolt pool esetén a branch-lista és a
-  beállítások a mergerfs xattr-vezérlőjén át azonnal érvényre jutnak,
-  újracsatolás nélkül — Samba-használat közben is bővíthető a pool
-- **„Megosztás létrehozása ebből a poolból”** gomb: a share-szerkesztő a
-  pool csatolási pontjával előtöltve nyílik
-- **Törlésvédelem**: amíg egy megosztás a poolra mutat, a pool nem
-  törölhető és nem választható le; pool törlésekor a branch-eken lévő
-  adatok érintetlenek maradnak
+### mergerfs pools
 
-### Bind mountok — prezentációs fa
+- **Pool create/edit**: add branches (disks/folders) with a browser or with
+  one click from the managed disk mounts, per-branch RW / RO (read-only) /
+  NC (no new files) mode
+- **Mount disks from the UI**: the GUI lists partitions that have a
+  filesystem but aren't mounted yet, and mounts them under `/mnt/disks/<name>`
+  with an fstab entry
+- **Format blank disks/partitions**: devices with no filesystem show up in
+  their own list; pick ext4 or xfs and the GUI formats the device with
+  `wipefs`+`mkfs` (directly on the device, no partition table), then mounts
+  it immediately. The Proxmox system disk (and every partition/LVM volume on
+  it) never appears in either list
+- **Presets plus an advanced field**: create policy (mfs, epmfs, ff, pfrd, …)
+  with short explanations, minimum free space, `moveonenospc`, plus a
+  free-form text field for any other mergerfs option
+- **Cache settings as their own fields**, because they decide write
+  throughput: `cache.files` (defaults to `auto-full`), `cache.writeback`
+  (coalesces small writes) and `dropcacheonclose`. `cache.files=off` means
+  direct_io — no page cache and no shared mmap, which makes mmap-using
+  programs (qBittorrent/libtorrent 2.x, sqlite) fail outright, and reduces
+  small-write throughput to a fraction of what the disk can do. Diagnostics
+  warns separately if a pool is running that way
+- **IO passthrough**: if both the kernel (6.9+) and mergerfs (2.41+) support
+  it, `passthrough.io` skips the mergerfs process entirely and reads/writes
+  at near-native speed. Diagnostics notices when it's available and can turn
+  it on with one click — disabling the settings it conflicts with
+  (moveonenospc, write coalescing) and remounting the pool
+- **Usage view**: per-pool and per-branch (per-disk) storage bars, like
+  Unraid's Main tab
+- **Live reconfiguration**: for a mounted pool, the branch list and settings
+  take effect immediately through mergerfs's xattr control file, no remount
+  needed — a pool can grow even while Samba is using it
+- **"Create share from this pool" button**: opens the share editor
+  pre-filled with the pool's mountpoint
+- **Deletion protection**: a pool can't be deleted or unmounted while a share
+  points at it; deleting a pool leaves the data on its branches untouched
 
-A fizikai tárolás és az, amit a felhasználók böngésznek, nem kell, hogy
-ugyanaz legyen. Ha a fontos adatok egy ZFS poolon (`/mnt/fontos`), a nem
-fontosak meg egy mergerfs poolon (`/mnt/bulk`) vannak, az alapból két külön
-csatolási pont, tehát két külön megosztás. Bind mounttal viszont egyetlen
-fába fűzhetők:
+### Bind mounts — a presentation tree
+
+Physical storage and what users browse don't have to be the same thing. If
+important data lives on a ZFS pool (`/mnt/important`) and less important data
+on a mergerfs pool (`/mnt/bulk`), those are two separate mountpoints by
+default — and therefore two separate shares. A bind mount weaves them into a
+single tree instead:
 
 ```
-/mnt/fontos/kz  →  /mnt/family_pool/kz/fontos
-/mnt/bulk/kz    →  /mnt/family_pool/kz/nemfontos
+/mnt/important/kz  →  /mnt/family_pool/kz/important
+/mnt/bulk/kz       →  /mnt/family_pool/kz/other
 …
 ```
 
-Így elég **egyetlen megosztást** kiadni a `/mnt/family_pool`-ra, és a
-felhasználó a `kz/fontos`, `kz/nemfontos` szerkezetet látja — miközben a
-háttérben a kettő két külön fájlrendszeren ül.
+That way a **single share** on `/mnt/family_pool` is enough, and the user
+sees a `kz/important`, `kz/other` structure — while behind the scenes the two
+live on two different filesystems.
 
-- **Sablon-generátor**: megadod a prezentációs gyökeret, a mappaneveket
-  (pl. `kz, kzs, kv`) és a szinteket (`fontos` → `/mnt/fontos`,
-  `nemfontos` → `/mnt/bulk`), és a GUI élő előnézettel kiszámolja mind a
-  6 bind mountot — jelezve, mely forrásmappák hiányoznak még
-- **Hiányzó forrásmappák létrehozása** egy pipával: ZFS dataset alatt
-  datasetként, egyébként sima mappaként
-- **Fa-nézet**: a logikai szerkezet mellett minden levélnél ott a valós
-  forrás és a mögötte lévő tároló (`POOL: bulk`, `fs: /mnt/fontos`)
-- **Csak olvasható** bind mount, ha a fát nézegetésre adod ki
-- **Törlésvédelem mindkét irányban**: a bind nem törölhető, amíg megosztás
-  mutat a céljára, és a pool/diszk sem választható le, amíg egy bind onnan
-  veszi a forrását — még akkor sem, ha a megosztás csak a bind célján
-  keresztül, közvetve függ tőle
+- **Template generator**: give it the presentation root, the folder names
+  (e.g. `kz, kzs, kv`) and the tiers (`important` → `/mnt/important`, `other`
+  → `/mnt/bulk`), and the GUI computes all 6 bind mounts with a live preview
+  — flagging which source folders are still missing
+- **Create missing source folders** with one checkbox: as a ZFS dataset if
+  the parent is one, otherwise as a plain folder
+- **Tree view**: alongside the logical structure, every leaf shows the real
+  source and the storage behind it (`POOL: bulk`, `fs: /mnt/important`)
+- **Read-only** bind mount, if you're exposing the tree for browsing only
+- **Deletion protection in both directions**: a bind can't be deleted while a
+  share points at its target, and a pool/disk can't be unmounted while a bind
+  sources from it — even if a share only depends on it indirectly, through the
+  bind's target
 
-| Megosztás szerkesztése | Felhasználó + jogosultsági mátrix (EN) |
+| Editing a share | User + access matrix (EN) |
 |---|---|
-| ![Share szerkesztő](docs/share-edit.png) | ![User szerkesztő](docs/user-edit-en.png) |
+| ![Share editor](docs/en/share-edit.png) | ![User editor](docs/en/user-edit.png) |
 
-| mergerfs poolok | Pool szerkesztése |
+| mergerfs pools | Editing a pool |
 |---|---|
-| ![Poolok](docs/pools.png) | ![Pool szerkesztő](docs/pool-edit.png) |
+| ![Pools](docs/en/pools.png) | ![Pool editor](docs/en/pool-edit.png) |
 
-### Lemezek alvó állapota
+### Disk sleep
 
-A Proxmoxból hiányzik az Unraid-szerű lemezalvás-kezelés, a `hd-idle` pedig
-kézzel írt konfigot igényel (`/etc/default/hd-idle`), amit lemezcserénél át
-kell írni — és csak azt naplózza, amit ő maga altatott el. Ez az oldal
-mindhármat kiváltja.
+Proxmox has no Unraid-style disk sleep management, and `hd-idle` needs a
+hand-edited config (`/etc/default/hd-idle`) that has to be rewritten whenever
+a disk is swapped — and it only logs the spin-downs it performed itself. This
+page replaces all three.
 
-- **Tétlenségi idő lemezenként**, legördülőből: 15/30/45 perc, 1–6 óra, vagy
-  „Soha". A beállítás a lemez `/dev/disk/by-id` nevéhez kötődik, nem a
-  `/dev/sdX`-hez — az újraindításkor változhat, és akkor egy másik lemezre
-  vonatkozna a házirend
-- **Kézi altatás** a tétlenségi idő lejárta előtt, egy gombbal
-- **Kereshető napló**: minden elalvás és ébredés bekerül egy helyi SQLite
-  adatbázisba (`/var/lib/proxmox-nas-gui/disk-events.db`), okkal együtt —
-  tétlenségi idő, kézi altatás (a felhasználó nevével), vagy külső. Szűrhető
-  lemezre, eseményre, okra és szövegre, lapozva
-- **24 órás idővonal** lemezenként, az események átmeneteiből számolva
-- **Élő írási/olvasási sebesség** a pörgő lemezeknél, 2 másodpercenként
-  frissítve. A számlálók a `/proc/diskstats`-ból jönnek (kernelmemória, nulla
-  lemez-I/O), a sebességet a böngésző számolja két minta különbségéből — így
-  a lekérdezés maga sosem ébreszt fel semmit, és egy háttérbe tett fül sem
-  torzítja az értéket. A szám mellett **tükrözött sparkline** mutatja az
-  utolsó 2 percet — az olvasás a középvonal fölött, az írás alatta, közös
-  skálán. Így ránézésre elkülönül a löketszerű forgalom (mentés, scrub) az
-  egyenletestől, és rögtön látszik az is, ha egy „alvó" lemezre folyamatosan
-  írás érkezik
-- **Hőmérséklet**: a pörgő lemezeknél az aktuális érték a kártyán, a küszöbök
-  szerint színezve; alvó lemeznél az utolsó ismert érték a korával együtt.
-  A figyelő 5 percenként mintát vesz és adatbázisba írja, külön
-  **Hőmérséklet** fülön grafikonnal (24 óra / 7 nap / 30 nap / 1 év),
-  lemezenkénti min–átlag–max táblázattal és CSV exporttal
-- **Figyelmeztetések**: a GUI megnézi, mi tarthatja ébren az adott lemezt, és
-  ahol biztonságos, egy gombbal ki is javítja
+- **Per-disk idle timeout**, from a dropdown: 15/30/45 minutes, 1–6 hours, or
+  "Never". The setting is tied to the disk's `/dev/disk/by-id` name, not
+  `/dev/sdX` — the latter can change on reboot, and then the policy would
+  apply to a different disk
+- **Manual spin-down** before the idle timer expires, with one click
+- **Searchable log**: every sleep and wake event goes into a local SQLite
+  database (`/var/lib/proxmox-nas-gui/disk-events.db`), together with why —
+  idle timeout, manual spin-down (with the user's name), or external.
+  Filterable by disk, event, reason and free text, with paging
+- **24-hour timeline** per disk, computed from the events' transitions
+- **Live read/write throughput** for spinning disks, refreshed every 2
+  seconds. The counters come from `/proc/diskstats` (kernel memory, zero disk
+  I/O), and the rate is computed by the browser from the difference between
+  two samples — so polling itself never wakes anything, and a backgrounded
+  tab doesn't skew the value either. Next to the number, a **mirrored
+  sparkline** shows the last 2 minutes — reads above the centre line, writes
+  below, on a shared scale. That makes bursty traffic (a save, a scrub) stand
+  out from steady traffic at a glance, and immediately shows if a "sleeping"
+  disk is being written to continuously
+- **Temperature**: the current value on the card for spinning disks, coloured
+  by threshold; for a sleeping disk, the last known value with its age. The
+  monitor samples every 5 minutes and writes to the database, with its own
+  **Temperature** tab showing a chart (24h / 7d / 30d / 1y), a per-disk
+  min–average–max table, and CSV export
+- **Warnings**: the GUI checks what might be keeping a given disk awake, and
+  fixes it with one click wherever that's safe
 
-![Lemezek alvó állapota](docs/sleep.png)
+![Disk sleep](docs/en/sleep.png)
 
-#### Hogyan altat, és miért nem hd-idle-lel?
+#### How it puts disks to sleep, and why not just hd-idle?
 
-A `hdparm -y` az ATA STANDBY IMMEDIATE parancsot küldi, amit sok lemez (és
-gyakorlatilag minden USB/SAS híd) figyelmen kívül hagy — ráadásul hiba nélkül,
-tehát a parancs sikeres kilépése nem bizonyíték. A GUI ezért sorban próbálja a
+`hdparm -y` sends the ATA STANDBY IMMEDIATE command, which plenty of drives
+(and virtually every USB/SAS bridge) ignore — and without an error, so the
+command exiting successfully proves nothing. The GUI therefore tries
 `hdparm -y` → `sg_start --stop` (SCSI START STOP UNIT) → `sdparm --command=stop`
-parancsokat, és **mindegyik után `hdparm -C`-vel ellenőrzi**, hogy a lemez
-tényleg készenlétbe került-e. A működő módszert lemezenként megjegyzi, így a
-következő altatás már egyetlen parancs.
+in order, **verifying with `hdparm -C` after each one** that the disk
+actually reached standby. It remembers which method worked per disk, so the
+next spin-down is a single command.
 
-A tétlenséget a `/proc/diskstats` számlálói adják (kernelmemóriából, nulla
-I/O), az energiaállapotot a `hdparm -C` — az ATA CHECK POWER MODE parancsra a
-lemez az elektronikájából válaszol, nem pörög fel tőle. **Maga a figyelés
-tehát soha nem ébreszti fel a lemezeket.** A figyelő a webalkalmazás
-folyamatában fut (egy uvicorn worker), nem külön szolgáltatásként.
+Idleness comes from `/proc/diskstats` counters (kernel memory, zero I/O), and
+power state from `hdparm -C` — ATA CHECK POWER MODE, answered by the drive's
+electronics without spinning it up. **So monitoring itself never wakes a
+disk.** The monitor runs inside the web application's own process (one
+uvicorn worker), not as a separate service.
 
-Ha a `hd-idle` fut, az oldal tetején figyelmeztetés jelenik meg: amíg fut, ő
-is altat, és a napló hiányos marad. Az „Átvétel" gomb leállítja és letiltja,
-a `HD_IDLE_OPTS` sorból pedig átveszi a lemezenkénti időzítéseket (a legközelebbi
-felkínált értékre kerekítve, amiről jelzést is ad).
+If `hd-idle` is running, a warning banner appears at the top of the page:
+while it's running, it's also putting disks to sleep, and the log stays
+incomplete. The "Take over" button stops and disables it, and imports the
+per-disk timings from the `HD_IDLE_OPTS` line (rounded to the nearest offered
+value, which it reports).
 
-#### Hőmérséklet mérése alvó lemez felébresztése nélkül
+#### Measuring temperature without waking a sleeping disk
 
-Ez az egyetlen mérés, ami nem ingyenes: a tétlenség a `/proc/diskstats`-ból,
-az energiaállapot a `hdparm -C`-ből jön, de a hőmérséklet valódi
-SMART-lekérdezés — pontosan az, amiről a lentebbi `smartd`-figyelmeztetés azt
-írja, hogy felpörgeti a lemezt. Ezért két, egymástól független védelem van:
+This is the one measurement that isn't free: idleness comes from
+`/proc/diskstats`, power state from `hdparm -C`, but temperature is a real
+SMART query — exactly what the `smartd` warning further down says spins a
+disk up. So there are two independent safeguards:
 
-1. **A figyelő csak ébren lévő lemezt kérdez le.** Az energiaállapotot
-   ugyanabban a körben már megmérte `hdparm -C`-vel; alvó lemezre a parancsot
-   **el sem indítja**.
-2. **`smartctl -n standby`** a hálószem, ha a lemez a két lépés között aludt
-   el: ilyenkor a smartctl 2-es kóddal kilép anélkül, hogy felpörgetné.
+1. **The monitor only queries a disk it has just observed to be awake.** It
+   already measured the power state this same round with `hdparm -C`; it
+   never even issues the command against a sleeping disk.
+2. **`smartctl -n standby`** is the safety net for the case where the disk
+   fell asleep between those two steps: smartctl then exits with code 2
+   without spinning it up.
 
-Az adatbázisba **csak valódi mérés** kerül. Egy alvó lemez smartctl-válaszában
-a hőmérséklet gyakran `0` — ez „nincs adat", nem fagypont, különben minden
-átlagot lehúzna. Ennek szép mellékhatása: **a grafikonon a lyukak maguk az
-alvási időszakok**, külön jelölés nélkül látszik, mennyit hűt az altatás.
+**Only a real measurement** ever goes into the database. A sleeping disk's
+smartctl response often reports `0` for temperature — that's treated as "no
+reading", not freezing, or it would drag every average down. A nice side
+effect: **the gaps on the chart are the sleep periods themselves**, no
+separate marker needed to see how much cooler sleep makes things.
 
-A rendszerlemez a Hőmérséklet fülön megjelenik (és csak ott): folyamatosan
-pörög, tehát tipikusan az a legmelegebb a gépben. Vezérlőt nem kap, és
-minden olyan listából kimarad, ami műveletet végezhetne egy lemezen.
+The system disk appears on the Temperature tab (and only there): it spins
+continuously, so it's typically the warmest drive in the box. It gets no
+controls, and stays out of every list that could act on a disk.
 
-#### Mi tartja ébren a lemezt?
+#### What's keeping a disk awake?
 
-Lemezenként az alábbiakat vizsgálja. A ✅ jelölt javítások egy kattintással
-lefuttathatók a felületről; a többinél a parancs megjelenik, de szándékosan
-nem futtatjuk le — vagy nem ennek az alkalmazásnak a hatásköre, vagy olyan
-kompromisszum, amit csak a felhasználó mérlegelhet.
+Per disk, the GUI checks the following. Checks marked ✅ can be fixed with one
+click from the UI; for the rest, the command is shown but deliberately not
+run — either it's outside this application's remit, or it's a trade-off only
+the user can weigh.
 
-| Ellenőrzés | Miért ébreszt | Javaslat | |
+| Check | Why it wakes the disk | Suggestion | |
 |---|---|---|---|
-| `smartd` | 30 percenként SMART-adatot olvas, ami felpörgeti az alvó lemezt | `-n standby,q` a `/etc/smartd.conf` eszközsorára | ✅ |
-| ZFS `atime` | `atime=on` mellett az olvasás is írást vált ki | `zfs set atime=off <pool>` | ✅ |
-| Csatolási opciók | `relatime` mellett az olvasás is ír a lemezre | `noatime` a GUI saját fstab-sorába + élő remount | ✅ |
-| mergerfs gyorsítótár | minden könyvtárlistázás megérinti az összes branch-et | `cache.statfs=60,cache.attr=300,cache.entry=300` | |
-| `zfs-auto-snapshot` | negyedóránkénti pillanatkép = metaadat-írás | `zfs set com.sun:auto-snapshot=false <dataset>` | |
-| Proxmox-tároló | a `pvestatd` 10 másodpercenként lekérdez minden tárolót | `pvesm set <id> --disable 1` | |
-| ZFS scrub | havonta órákra ébren tartja a pool minden lemezét | csak tájékoztatás | |
-| ZFS zvol | futó VM/konténer folyamatos I/O-t okoz | csak tájékoztatás | |
-| `updatedb` | a napi indexelés végigjárja a fájlrendszert | az útvonal felvétele a `PRUNEPATHS` közé | |
+| `smartd` | Reads SMART data every 30 minutes, which spins up a sleeping disk | `-n standby,q` on the device line in `/etc/smartd.conf` | ✅ |
+| ZFS `atime` | With `atime=on`, even a read triggers a write | `zfs set atime=off <pool>` | ✅ |
+| Mount options | With `relatime`, even a read writes to the disk | `noatime` on the GUI's own fstab line + a live remount | ✅ |
+| mergerfs cache | Every directory listing touches all branches | `cache.statfs=60,cache.attr=300,cache.entry=300` | |
+| `zfs-auto-snapshot` | A snapshot every 15 minutes is a metadata write | `zfs set com.sun:auto-snapshot=false <dataset>` | |
+| Proxmox storage | `pvestatd` queries every configured storage every 10 seconds | `pvesm set <id> --disable 1` | |
+| ZFS scrub | Keeps every disk in the pool awake for hours, monthly | informational only | |
+| ZFS zvol | A running VM/container causes continuous I/O | informational only | |
+| `updatedb` | The daily index walks the whole filesystem | add the path to `PRUNEPATHS` | |
 
-**A mergerFS-ről őszintén:** a mergerfs
-[saját dokumentációja](https://github.com/trapexit/mergerfs/wiki/Limit-Drive-Spinup)
-kimondja, hogy pool szinten nem lehet megbízhatóan megakadályozni a
-felpörgést — a mergerfs proxy, nem gyorsítótár, és egy `readdir` definíció
-szerint minden branch-et megérint. A cache-opciók csak az *ismétlődő*
-metaadat-kéréseket szűrik. A valódi tanács ezért az, hogy indexelőt,
-médiaszervert vagy mentést a mögöttes útvonalra irányíts, ne a poolra.
+**Honestly, about mergerfs:** mergerfs's
+[own documentation](https://github.com/trapexit/mergerfs/wiki/Limit-Drive-Spinup)
+says spin-up cannot be reliably prevented at the pool level — mergerfs is a
+proxy, not a cache, and a `readdir` by definition touches every branch. The
+cache options only filter out *repeated* metadata requests. The real advice
+is to point an indexer, media server or backup tool at the underlying path,
+never at the pool.
 
-![Hőmérséklet-előzmény](docs/temps.png)
+![Temperature history](docs/en/temps.png)
 
-| Mi tartja ébren? | Állapotnapló |
+| What's keeping this disk awake? | State log |
 |---|---|
-| ![Figyelmeztetések](docs/sleep-warnings.png) | ![Napló](docs/sleep-log.png) |
+| ![Warnings](docs/en/sleep-warnings.png) | ![Log](docs/en/sleep-log.png) |
 
-**A rendszerlemez** — ahogy a formázásnál is — meg sem jelenik az oldalon.
-Három szabály zárja ki: a csatolási pont (`/`, `/boot`, LVM-en át is), az
-aktív swap, és ZFS-gyökér esetén a `findmnt` + `zpool list` alapján
-azonosított pooltagok. Ez utóbbi külön szabály, mert egy `zfs_member`
-partíciónak nincs csatolási pontja, tehát az első kettő nem fogná ki.
+**The system disk** — like at format time — doesn't appear on this page at
+all. Three rules exclude it: the mountpoint (`/`, `/boot`, through LVM too),
+active swap, and for a ZFS root, membership identified via `findmnt` +
+`zpool list`. The last one is its own rule because a `zfs_member` partition
+has no mountpoint at all, so the first two wouldn't catch it.
 
-### Diagnosztika
+### Diagnostics
 
-Egy gombbal végigfut minden ellenőrzés a poolokon, bind mountokon,
-megosztásokon, diszk-mountokon, systemd egységeken és a lemezalváson. Amit
-biztonságosan meg lehet javítani, azt egy gomb el is végzi (a többinél a
-kimásolható parancs jelenik meg).
+One button runs every check across the pools, bind mounts, shares, disk
+mounts, systemd units and disk sleep. Whatever can be fixed safely, a button
+fixes; for everything else, a copyable command is shown.
 
-A teljesítménnyel kapcsolatos ellenőrzések, mert ezek nem hibaként
-jelentkeznek, hanem csak lassúságként:
+The performance-related checks, because these don't show up as errors, only
+as slowness:
 
-- **`cache.files=off`**: a pool gyorsítótár nélkül fut, ami elveszi az mmap
-  támogatást és minden apró írást külön oda-vissza úttá tesz
-- **A futó mount eltér a beállítottól**: néhány mergerfs opciót
-  (írás-összevonás, passthrough) csak felcsatoláskor lehet átvenni, ezért a
-  mentés önmagában nem elég. Ez az ellenőrzés a mergerfs xattr-vezérlőjén
-  keresztül összeveti a *ténylegesen futó* értékeket a mentettekkel — a
-  javítás újracsatolja a poolt, és visszakapcsolja a rá épülő bind
-  mountokat (ezek a pool leállításakor magukkal együtt leállnak)
-- **Elavult mergerfs**: a kernel tudna IO passthrough-t, a telepített
-  mergerfs viszont nem. A disztró csomagja évekkel le szokott maradni
-- **Elérhető IO passthrough**: minden adott hozzá, de a poolon nincs
-  bekapcsolva. A javítás bekapcsolja, kikapcsolja a vele ütközőket
-  (moveonenospc, írás-összevonás), és újracsatol
+- **`cache.files=off`**: the pool is running without a page cache, which
+  removes mmap support and turns every small write into its own round trip
+- **The running mount doesn't match what's saved**: some mergerfs options
+  (write coalescing, passthrough) can only be picked up at mount time, so
+  saving alone isn't enough. This check compares the *actually running*
+  values, via the mergerfs xattr control file, against what's saved — the fix
+  remounts the pool and brings its bind mounts back up (they go down with the
+  pool when it stops)
+- **Outdated mergerfs**: the kernel could do IO passthrough, but the
+  installed mergerfs can't. The distro package tends to lag years behind
+- **IO passthrough available**: everything needed is present, but it isn't
+  turned on for the pool. The fix turns it on, turns off what conflicts with
+  it (moveonenospc, write coalescing), and remounts
 
-## Telepítés
+![Diagnostics](docs/en/diag.png)
 
-Proxmox VE hoszton (vagy bármely Debian-alapú rendszeren, LXC-ben is), rootként:
+## Installation
+
+On a Proxmox VE host (or any Debian-based system, including inside an LXC),
+as root:
 
 ```bash
 git clone https://github.com/kzkz22/proxmox-nas-gui.git
@@ -279,198 +282,147 @@ cd proxmox-nas-gui
 ./deploy/install.sh
 ```
 
-Ezután a felület a `https://<hoszt-ip>:8481/` címen érhető el, a belépés a
-hoszt **root** jelszavával történik. (A tanúsítvány önaláírt, a böngésző
-egyszer figyelmeztetni fog.)
+The UI is then available at `https://<host-ip>:8481/`, logging in with the
+host's **root** password. (The certificate is self-signed; the browser will
+warn once.)
 
-A telepítő a mergerfs-t az apt-ból rakja fel, majd — ha a disztró csomagja
-régebbi — felülírja az upstream kiadással. A Debian csomagja évekkel le van
-maradva (bookworm: 2.33.5, trixie: 2.40.2), és ami hiányzik, az számít: a
-`passthrough.io` a 2.41.0-ban jelent meg. A mergerfs saját dokumentációja is
-a releases oldalról való telepítést ajánlja. Ha nincs hálózat, vagy nincs
-build az adott disztróhoz, az apt-os verzió marad és a telepítés folytatódik.
+The installer installs mergerfs from apt, then — if the distro's package is
+older — overwrites it with the upstream release. Debian's package lags years
+behind (bookworm: 2.33.5, trixie: 2.40.2), and what's missing matters:
+`passthrough.io` arrived in 2.41.0. mergerfs's own documentation also
+recommends installing from the releases page. If there's no network, or no
+build for the given distro, the apt version is kept and installation
+continues.
 
-### Frissítés: változás a pool gyorsítótár-alapértékein
+### Upgrade note: pool cache defaults changed
 
-Korábban a GUI minden poolt fixen `cache.files=off,dropcacheonclose=true`
-opciókkal csatolt. Ez direct_io-t kényszerít: nincs lapgyorsítótár, és a
-FUSE nem tud osztott mmap-ot sem adni — ezért futott hibára (`ENODEV`)
-minden mmap-ot használó program, és ezért maradt az apró darabokban író
-programok (torrent kliens) írási sebessége a lemez képességének töredékén.
-Az alapértelmezés most `cache.files=auto-full`, `dropcacheonclose=false`,
-`cache.writeback=false`.
+Previously the GUI mounted every pool with fixed
+`cache.files=off,dropcacheonclose=true` options. That forces direct_io: no
+page cache, and FUSE can't offer shared mmap either — so every mmap-using
+program failed with `ENODEV`, and small-write programs (torrent clients) were
+stuck at a fraction of the disk's throughput. The default is now
+`cache.files=auto-full`, `dropcacheonclose=false`, `cache.writeback=false`.
 
-A meglévő poolok a mentett beállításaikat tartják meg, de a fenti három
-mezőt még nem tárolták — ezek az új alapértéket kapják, ami a pool
-következő mentésekor vagy újracsatolásakor lép életbe. Ha a régi
-viselkedés kell (pl. nagyon kevés RAM mellett), a pool szerkesztőjében a
-fájl gyorsítótár állítható vissza `off`-ra.
+Existing pools keep their saved settings, but if these three fields were
+never stored, they now get the new default, which takes effect the next time
+the pool is saved or remounted. If the old behaviour is needed (e.g. on very
+little RAM), the file cache can be set back to `off` in the pool editor.
 
-## Hogyan működik?
+## How it works
 
-- A beállítások *forrása* a `/etc/proxmox-nas-gui/state.json`, ebből
-  generálódik determinisztikusan a `/etc/samba/proxmox-nas-gui.conf`.
-- A meglévő `/etc/samba/smb.conf`-ot csak egyetlen `include` sorral egészíti
-  ki (az eredetiről biztonsági mentés készül: `smb.conf.pnas-backup`).
-- Minden módosítás előtt `testparm` validálja a teljes új konfigurációt egy
-  ideiglenes másolaton — hibás beállítás soha nem kerülhet a futó Samba alá.
-- Sikeres validálás után újratöltés `smbcontrol all reload-config`-gal,
-  újraindítás nélkül.
-- A megosztott mappák adatkezelése Unraid-módra történik: a megosztás
-  gyökere a `nobody` felhasználóé (`force user = nobody`), a hozzáférést a
-  Samba szabályozza — így a jogosultsági mátrix módosítása sosem igényel
-  fájlrendszer-szintű chown/chmod futtatást a meglévő fájlokon.
-- Megosztás törlésekor **a lemezen lévő adatok érintetlenek maradnak**.
-- A mergerfs poolokat generált **systemd unit** indítja
-  (`/etc/systemd/system/pnas-pool-<név>.service`, `RequiresMountsFor`-ral a
-  helyes boot-sorrendhez) — szándékosan nem fstab-ból, mert a Debian 12-es
-  mergerfs 2.33 mount-helpere elutasítja a generikus fstab-opciókat, a
-  bináris közvetlen hívása viszont minden verzión működik. Egy hibás pool
-  így sosem viszi emergency módba a hosztot.
-- A diszk-mountok az `/etc/fstab`-ba kerülnek (`nofail`-lel), soronként
-  `# pnas:disk:<név>` címkével — csak a saját sorainkat módosítjuk, az első
-  íráskor biztonsági mentés készül (`fstab.pnas-backup`).
-- A bind mountok szintén generált **systemd unitot** kapnak
-  (`/etc/systemd/system/pnas-bind-<név>.service`), nem fstab-sort. Az fstab
-  `x-systemd.requires-mounts-for=` opciója ugyanis egy `.mount` unitra várna,
-  a mergerfs poolt viszont egy *service* csatolja — így nincs mire rendezni.
-  A unit ezért közvetlenül a pool service-ét nevezi meg
-  (`Requires=`/`After=pnas-pool-<név>.service`), minden más forrásnál pedig
-  `RequiresMountsFor=` gondoskodik a sorrendről. Leálláskor a systemd
-  fordított sorrendben állít, tehát a bind előbb válik le, mint a mögötte
-  lévő tároló.
-- **A bind unit legfontosabb sora az őrszem**:
-  `ExecStartPre=/usr/bin/mountpoint -q <forrás mögötti mount>`. Enélkül egy
-  még fel nem csatolt ZFS/mergerfs forrás esetén a `mount --bind` simán
-  sikerülne — az alatta lévő **üres** mappára. A Samba ekkor üres megosztást
-  adna, egy arra ráállított szinkron-eszköz pedig törlésként propagálhatná az
-  ürességet. Az őrszem inkább nem csatol, mint hogy ez megtörténjen.
-- Ezért is: a **Syncthingnek (és minden szinkron-eszköznek) a valós
-  forrásútvonalat** add meg (`/mnt/fontos/kz`), ne a bind célját. A bind-elt
-  fa a Samba (emberi böngészés) kényelmét szolgálja.
-- Bind mount törlésekor csak a megjelenítés szűnik meg; a cél mappa üresen
-  ottmarad, a forráson lévő adatok érintetlenek.
-- A lemezalvás-figyelő a webalkalmazás folyamatában fut, 30 másodpercenként.
-  A tétlenséget a `/proc/diskstats` számlálóiból, az energiaállapotot a
-  `hdparm -C`-ből olvassa — egyik sem okoz lemez-I/O-t, tehát a figyelés maga
-  soha nem ébreszt fel semmit. Az események
-  `/var/lib/proxmox-nas-gui/disk-events.db`-be kerülnek (SQLite), ami a
-  rendszerlemezen van.
-- Az altatási házirendek a `/dev/disk/by-id` névhez kötődnek, nem a
-  `/dev/sdX`-hez: az utóbbi felderítési sorrendben kap nevet, tehát
-  újraindítás után más lemezre vonatkozhatna ugyanaz a beállítás.
+- The *source of truth* for configuration is
+  `/etc/proxmox-nas-gui/state.json`, from which
+  `/etc/samba/proxmox-nas-gui.conf` is generated deterministically.
+- The existing `/etc/samba/smb.conf` is only extended with a single `include`
+  line (the original is backed up as `smb.conf.pnas-backup`).
+- Before every change, `testparm` validates the entire new configuration on a
+  temporary copy — an invalid configuration can never reach the running
+  Samba.
+- After successful validation, a reload happens via
+  `smbcontrol all reload-config`, with no restart.
+- Shared folders are managed the Unraid way: the share's root is owned by
+  `nobody` (`force user = nobody`), and Samba enforces access — so editing
+  the access matrix never requires a filesystem-level chown/chmod on existing
+  files.
+- Deleting a share **leaves the data on disk untouched**.
+- mergerfs pools are started by a generated **systemd unit**
+  (`/etc/systemd/system/pnas-pool-<name>.service`, with `RequiresMountsFor`
+  for correct boot ordering) — deliberately not from fstab, because Debian
+  12's mergerfs 2.33 mount helper rejects generic fstab options, while
+  calling the binary directly works on every version. A broken pool can
+  therefore never drop the host into emergency mode.
+- Disk mounts go into `/etc/fstab` (with `nofail`), each line tagged
+  `# pnas:disk:<name>` — only our own lines are ever touched, and a backup
+  (`fstab.pnas-backup`) is made on the first write.
+- Bind mounts also get a generated **systemd unit**
+  (`/etc/systemd/system/pnas-bind-<name>.service`), not an fstab line.
+  fstab's `x-systemd.requires-mounts-for=` option would wait on a `.mount`
+  unit, but a mergerfs pool is mounted by a *service* — so there's nothing to
+  order against. The unit therefore names the pool service directly
+  (`Requires=`/`After=pnas-pool-<name>.service`); every other source is
+  ordered with `RequiresMountsFor=`. On shutdown, systemd stops things in
+  reverse order, so a bind comes down before the storage behind it.
+- **The most important line in a bind unit is the guard**:
+  `ExecStartPre=/usr/bin/mountpoint -q <mount behind the source>`. Without it,
+  a `mount --bind` onto a not-yet-mounted ZFS/mergerfs source would simply
+  succeed — against the **empty** directory underneath. Samba would then
+  serve an empty share, and a sync tool pointed at it could propagate the
+  emptiness as deletions. The guard would rather not mount at all than let
+  that happen.
+- Which is also why: **point Syncthing (and any sync tool) at the real source
+  path** (`/mnt/important/kz`), never at a bind's target. The bound tree
+  exists for Samba's (human browsing) convenience.
+- Deleting a bind mount only removes the presentation; the target folder is
+  left empty, and the data at the source is untouched.
+- The disk sleep monitor runs inside the web application's process, every 30
+  seconds. It reads idleness from `/proc/diskstats` counters and power state
+  from `hdparm -C` — neither causes disk I/O, so monitoring itself never
+  wakes anything. Events go into
+  `/var/lib/proxmox-nas-gui/disk-events.db` (SQLite), which lives on the
+  system disk.
+- Sleep policies are tied to the `/dev/disk/by-id` name, not `/dev/sdX`: the
+  latter is assigned in discovery order, so after a reboot the same setting
+  could apply to a different disk.
 
-## Konfiguráció (környezeti változók)
+## Configuration (environment variables)
 
-| Változó | Alapértelmezés | Leírás |
+| Variable | Default | Description |
 |---|---|---|
-| `PNAS_ADMIN_USERS` | `root` | GUI-ba beléphető rendszerfelhasználók (vesszővel elválasztva) |
-| `PNAS_STATE_DIR` | `/etc/proxmox-nas-gui` | A state.json könyvtára |
-| `PNAS_SMB_CONF` | `/etc/samba/smb.conf` | A fő Samba konfig |
-| `PNAS_GEN_CONF` | `/etc/samba/proxmox-nas-gui.conf` | A generált konfig helye |
-| `PNAS_FSTAB` | `/etc/fstab` | A diszk-mountok fstab fájlja |
-| `PNAS_SYSTEMD_DIR` | `/etc/systemd/system` | A generált pool-unitok könyvtára |
-| `PNAS_LOG_DB` | `/var/lib/proxmox-nas-gui/disk-events.db` | A lemezállapot-napló adatbázisa |
-| `PNAS_SMARTD_CONF` | `/etc/smartd.conf` | A smartd konfig (az alvás-ellenőrzéshez) |
-| `PNAS_HD_IDLE_CONF` | `/etc/default/hd-idle` | A hd-idle konfig (átvételkor olvassuk) |
-| `PNAS_PVE_STORAGE` | `/etc/pve/storage.cfg` | A Proxmox tárolókonfig (csak olvassuk) |
-| `PNAS_UPDATEDB_CONF` | `/etc/updatedb.conf` | Az updatedb konfig (csak olvassuk) |
-| `PNAS_CRON_DIR` | `/etc/cron.d` | Cron-bejegyzések könyvtára (csak olvassuk) |
-| `PNAS_DISABLE_MONITOR` | – | `1` esetén az alvásfigyelő el sem indul (a tesztek ezt használják) |
+| `PNAS_ADMIN_USERS` | `root` | System users allowed to log into the GUI (comma-separated) |
+| `PNAS_STATE_DIR` | `/etc/proxmox-nas-gui` | Directory for state.json |
+| `PNAS_SMB_CONF` | `/etc/samba/smb.conf` | The main Samba config |
+| `PNAS_GEN_CONF` | `/etc/samba/proxmox-nas-gui.conf` | Where the generated config is written |
+| `PNAS_FSTAB` | `/etc/fstab` | The fstab file for disk mounts |
+| `PNAS_SYSTEMD_DIR` | `/etc/systemd/system` | Directory for generated pool units |
+| `PNAS_LOG_DB` | `/var/lib/proxmox-nas-gui/disk-events.db` | The disk-state log database |
+| `PNAS_SMARTD_CONF` | `/etc/smartd.conf` | The smartd config (for the sleep check) |
+| `PNAS_HD_IDLE_CONF` | `/etc/default/hd-idle` | The hd-idle config (read on takeover) |
+| `PNAS_PVE_STORAGE` | `/etc/pve/storage.cfg` | The Proxmox storage config (read-only) |
+| `PNAS_UPDATEDB_CONF` | `/etc/updatedb.conf` | The updatedb config (read-only) |
+| `PNAS_CRON_DIR` | `/etc/cron.d` | Directory for cron entries (read-only) |
+| `PNAS_DISABLE_MONITOR` | – | `1` disables the sleep monitor entirely (used by the tests) |
 
-A hőmérséklet-mérések ugyanabba az adatbázisba kerülnek, mint az
-állapotnapló (`PNAS_LOG_DB`), külön táblába és külön megőrzési idővel
-(alapból 1 év, szemben a napló 90 napjával).
+Temperature readings go into the same database as the state log
+(`PNAS_LOG_DB`), in a separate table with its own retention (1 year by
+default, versus the log's 90 days).
 
-## Fejlesztés
+## Development
 
 ```bash
 python3 -m venv venv && venv/bin/pip install -r backend/requirements-dev.txt
-venv/bin/python -m pytest                   # egységtesztek
-cd backend && ../venv/bin/uvicorn app.main:app --reload   # dev szerver
+venv/bin/python -m pytest                   # unit tests
+cd backend && ../venv/bin/uvicorn app.main:app --reload   # dev server
 ```
 
-A `pytest` a repó gyökeréből fut; a `backend/` könyvtárat a `pyproject.toml`
-teszi az import útvonalra.
+`pytest` runs from the repo root; `pyproject.toml` puts `backend/` on the
+import path.
 
-### Felépítés
+### Structure
 
-A kód három részre oszlik, a backendben és a frontenden ugyanúgy:
+The code splits into three parts, the same way in the backend and the
+frontend:
 
-| | tartalom |
+| | contains |
 |---|---|
-| `core/` | session, `state.json`, parancsfuttatás, mappa-tallózó, i18n, API-kliens |
-| `samba/` | megosztások, felhasználók, csoportok, `smb.conf` generálás |
-| `storage/` | mergerfs poolok, diszk-mountok, bind mountok, lemezalvás |
+| `core/` | session, `state.json`, running commands, directory browser, i18n, API client |
+| `samba/` | shares, users, groups, `smb.conf` generation |
+| `storage/` | mergerfs pools, disk mounts, bind mounts, disk sleep |
 
-**A `samba/` és a `storage/` sosem importálja egymást, és a `core/` egyiket
-sem.** Mindkét felet csak a kompozíciós gyökerek látják: `backend/app/models.py`
-(a közös `State`), `routes.py`, `state_view.py`, illetve `frontend/main.js` és
-`pages.js`. A `tests/test_layering.py` ezt ellenőrzi is.
+**`samba/` and `storage/` never import each other, and `core/` imports
+neither.** Both sides are only seen by the composition roots:
+`backend/app/models.py` (the shared `State`), `routes.py`, `state_view.py`,
+and `frontend/main.js` / `pages.js`. `tests/test_layering.py` enforces this.
 
-A két rendszer két ponton találkozik, és mindkettő szándékosan a gyökerekben
-él: a `core/deps.blockers_for_path()` mondja meg, hogy egy pool leválasztását
-blokkolja-e valamelyik megosztás — a bind mountokat is végigkövetve, mert egy
-megosztás a prezentációs fán keresztül közvetve is függhet egy pooltól —, a
-pool-mountpointot és bind-célt jelölő badge-et pedig a `main.js` injektálja a
-tallózóba.
+The two systems meet at exactly two points, and both deliberately live in the
+roots: `core/deps.blockers_for_path()` answers whether unmounting a pool is
+blocked by a share — following bind mounts too, since a share can depend on a
+pool indirectly through the presentation tree — and the badge marking a pool
+mountpoint or bind target is injected into the browser by `main.js`.
 
-A csomagokon belül mindenhol ugyanaz a kettősség: a tiszta, alrendszer nélküli
-fél (`poolconf.py`, `bindconf.py`, `sambaconf.py`, `sleepconf.py`) egységben
-tesztelhető, a valódi eszközökhöz és fájlokhoz nyúló fél (`pools.py`,
-`binds.py`, `service.py`, `disksleep.py`) pedig ezekre épül.
+The same duality repeats inside each package: the pure, subsystem-free half
+(`poolconf.py`, `bindconf.py`, `sambaconf.py`, `sleepconf.py`) is unit-tested
+in isolation, and the half that touches real devices and files
+(`pools.py`, `binds.py`, `service.py`, `disksleep.py`) builds on it.
 
-Új oldal felvételéhez elég egy leíró a csomag `pages.js`-ébe; a navigáció és a
-routing ebből generálódik.
-
----
-
-## English summary
-
-**Proxmox NAS GUI** is an Unraid-style web UI for managing Samba shares,
-users and groups on a Proxmox VE host (or any Debian-based system / LXC).
-It reproduces Unraid's Export (`No` / `Yes` / `Yes (hidden)`) and Security
-(`Public` / `Secure` / `Private`) model with a per-user/per-group access
-matrix, adds group management, a per-share recycle bin (`vfs_recycle`),
-directory/ZFS-dataset creation from the browser dialog, PAM (root) login
-over HTTPS, a bilingual (Hungarian/English) interface, and starts `nmbd`
-and `wsdd2` alongside `smbd` so the host actually shows up in Windows'
-Network view instead of only being reachable via a direct UNC path.
-
-It also manages [mergerfs](https://github.com/trapexit/mergerfs) pools:
-mount existing partitions from the UI (fstab-based), format blank
-disks/partitions (ext4/xfs) that carry no filesystem yet - a disk with no
-partition table gets a single GPT partition first, for compatibility if
-it's ever moved to another machine - with the Proxmox system disk always
-excluded from both lists, build pools from disks/folders with per-branch
-RW/RO/NC modes, create-policy
-presets plus a free-form advanced options field, page-cache settings
-(`cache.files`, `cache.writeback`, `dropcacheonclose`) and IO passthrough as
-first-class fields because they are what decides write throughput,
-per-branch usage bars,
-live reconfiguration of mounted pools via the mergerfs xattr control
-file, a "create share from this pool" shortcut, and deletion protection
-while shares depend on a pool. Pools are started by generated systemd
-units (`RequiresMountsFor` ordering) rather than fstab, which works on
-both mergerfs 2.33 (Debian 12) and newer.
-
-**Bind mounts** decouple the tree users browse from where the data
-actually lives. With important data on a ZFS pool and bulk data on a
-mergerfs pool, those are two mountpoints and therefore two shares; bind
-mounts weave them into one tree (`/mnt/family_pool/<user>/{fontos,
-nemfontos}`) served by a single share. A template generator expands
-"presentation root × folder names × tiers" into every bind mount needed,
-with a live preview, and can create the missing source directories - as
-ZFS datasets where the parent is one. Each bind gets a generated
-`pnas-bind-<name>.service`: fstab's `x-systemd.requires-mounts-for=`
-would wait on a `.mount` unit, but a mergerfs pool is mounted by a
-service, so the unit names that service directly. Its `ExecStartPre`
-`mountpoint` check is the part that matters - without it a bind onto a
-source whose filesystem is not mounted yet succeeds against the empty
-directory underneath, and Samba serves that emptiness. Point Syncthing
-and other sync tools at the real source path, never at a bind target.
-
-Install as root: `./deploy/install.sh`, then open `https://<host>:8481/`.
-Configuration lives in `/etc/proxmox-nas-gui/state.json`; the generated
-Samba config is validated with `testparm` before every apply, and the
-existing `smb.conf` is only extended with a single `include` line.
+Adding a new page only needs a descriptor in the package's `pages.js`; the
+navigation and routing are generated from that.
