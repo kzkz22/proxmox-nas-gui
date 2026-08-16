@@ -56,10 +56,14 @@ Unraid array), and share it immediately.
   filesystem but aren't mounted yet, and mounts them under `/mnt/disks/<name>`
   with an fstab entry
 - **Format blank disks/partitions**: devices with no filesystem show up in
-  their own list; pick ext4 or xfs and the GUI formats the device with
-  `wipefs`+`mkfs` (directly on the device, no partition table), then mounts
-  it immediately. The Proxmox system disk (and every partition/LVM volume on
-  it) never appears in either list
+  their own list; pick ext4 or xfs and the GUI formats them with
+  `wipefs`+`mkfs`, then mounts the result immediately. A whole blank *disk*
+  gets a GPT label with one full-size partition first, and it is that
+  partition (`/dev/sdX1`) that is formatted and mounted — a bare filesystem
+  on the disk device works for mergerfs but confuses other tools and
+  operating systems if the disk is ever moved. An already-partitioned device
+  is formatted in place, with no repartitioning. The Proxmox system disk (and
+  every partition/LVM volume on it) never appears in either list
 - **Presets plus an advanced field**: create policy (mfs, epmfs, ff, pfrd, …)
   with short explanations, minimum free space, `moveonenospc`, plus a
   free-form text field for any other mergerfs option
@@ -368,6 +372,67 @@ little RAM), the file cache can be set back to `off` in the pool editor.
 - Sleep policies are tied to the `/dev/disk/by-id` name, not `/dev/sdX`: the
   latter is assigned in discovery order, so after a reboot the same setting
   could apply to a different disk.
+
+## Security model
+
+What this tool is, stated plainly, because several of the design decisions
+below only make sense once it is: a single-administrator management console
+for one host, on a trusted network. It is not multi-tenant, and it draws no
+line between "logged in" and "allowed to do this".
+
+**Signing in is equivalent to root on the host.** Authentication goes through
+PAM against a real system account — by default `root`, the host's own
+password. Anyone who gets past the login screen can format disks, edit
+`/etc/fstab`, write systemd units and restart services. There are no
+permission levels inside the application, and adding one would be
+security theatre: every feature it offers is a root operation.
+
+**Sign-in attempts are throttled.** Five failed attempts per (address,
+username) pair are free; from the sixth, the wait doubles from 30 seconds up
+to a 15-minute cap, and a second counter per source address stops the count
+being reset by trying a different username each time. A locked-out caller is
+refused even with the correct password. Failures are logged with the username
+and source address, so `journalctl -u proxmox-nas-gui` is greppable and
+fail2ban has something to match. The counters live in memory and a service
+restart clears them.
+
+**Sessions live in memory.** The session cookie is `HttpOnly`, `Secure` and
+`SameSite=Lax`; the token behind it is kept in a dictionary in the running
+process, not on disk. This follows from the single-worker deployment: a
+service restart signs everybody out, which is the accepted cost of never
+writing a session token to disk and of not needing a shared session store.
+Running more than one worker would break sessions and is not supported.
+
+**Share directories are world-accessible on the host.** Shares are set up the
+way Unraid does it: the share root is `nobody:nogroup` and `0777`, and the
+generated Samba config uses `force user = nobody` with `create mask = 0666`
+and `directory mask = 0777`. Every file in a share therefore belongs to
+`nobody` and is readable and writable by any local account on the host. This
+is what makes the access matrix work — permissions are decided by Samba at
+connection time, once, rather than by chown runs across the data. **The
+consequence is explicit: the per-user and per-group settings in this GUI
+control SMB access only. They are not a protection against anything with
+local filesystem access to the host** — another shell account, a container or
+VM with a bind mount of the path, or a backup job. On a Proxmox host that
+usually means root and nothing else, which is why this trade-off is
+acceptable here; if it isn't in your setup, the share paths need protecting
+at the host level, not in this GUI.
+
+**The service runs as root, without systemd sandboxing.** It mounts and
+unmounts filesystems, formats disks, writes into `/etc/fstab`, `/etc/samba`
+and `/etc/systemd/system`, and drives `systemctl` and `smbpasswd` — so
+`ProtectSystem` and friends would have to be opened back up for exactly the
+paths that matter. `PrivateTmp` is worse than useless here: it puts the
+service in its own mount namespace, and the application mounts disks from its
+own process, so the mounts would become invisible to the rest of the host.
+The trade-off is accepted rather than overlooked, and the practical
+consequence is that any bug in this application is a host-level bug.
+
+**Keep it off the internet.** The service listens on `0.0.0.0:8481` with a
+self-signed certificate. It is meant to be reached from a LAN or over a VPN.
+Exposing the port publicly puts an unattended root PAM login on the internet;
+if you must, put it behind a reverse proxy that does its own authentication
+and rate limiting, and restrict the source addresses at the firewall.
 
 ## Configuration (environment variables)
 

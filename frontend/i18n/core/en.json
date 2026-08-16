@@ -17,6 +17,7 @@
   "common.save": "Save",
   "common.saved": "Saved",
   "login.error": "Invalid username or password",
+  "login.locked": "Too many failed attempts. Try again in {seconds} seconds.",
   "login.password": "Password",
   "login.submit": "Sign in",
   "login.title": "Sign in",

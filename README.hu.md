@@ -58,10 +58,15 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
   a `/mnt/disks/<név>` alá csatolja őket
 - **Üres lemezek/partíciók formázása**: a fájlrendszer nélküli eszközök
   külön listában jelennek meg; a felhasználó ext4 vagy xfs fájlrendszert
-  választhat, a GUI `wipefs`+`mkfs`-sel formázza (partíciós tábla
-  létrehozása nélkül, közvetlenül az eszközre), majd azonnal fel is
-  csatolja. A Proxmox rendszerlemez (és minden rajta lévő partíció/LVM
-  kötet) sosem jelenik meg egyik listában sem
+  választhat, a GUI `wipefs`+`mkfs`-sel formázza, majd azonnal fel is
+  csatolja. Teljes üres *lemez* esetén előbb GPT partíciós tábla készül egy
+  darab, a lemezt kitöltő partícióval, és ez a partíció (`/dev/sdX1`) lesz
+  formázva és felcsatolva — a partíciós tábla nélküli, közvetlenül az
+  eszközön ülő fájlrendszer a mergerfs-nek megfelel, de megzavarja a többi
+  eszközt és operációs rendszert, ha a lemez egyszer máshová kerül. A már
+  particionált eszköz a helyén formázódik, újraparticionálás nélkül. A
+  Proxmox rendszerlemez (és minden rajta lévő partíció/LVM kötet) sosem
+  jelenik meg egyik listában sem
 - **Presetek + haladó mező**: create policy (mfs, epmfs, ff, pfrd, …) rövid
   magyarázatokkal, minimális szabad hely, `moveonenospc`, plusz szabad
   szöveges mező bármely további mergerfs opcióhoz
@@ -369,6 +374,69 @@ fájl gyorsítótár állítható vissza `off`-ra.
 - Az altatási házirendek a `/dev/disk/by-id` névhez kötődnek, nem a
   `/dev/sdX`-hez: az utóbbi felderítési sorrendben kap nevet, tehát
   újraindítás után más lemezre vonatkozhatna ugyanaz a beállítás.
+
+## Biztonsági modell
+
+Hogy mi ez az eszköz, kimondva, mert az alábbi tervezési döntések csak ennek
+fényében állnak össze: egyetlen adminisztrátornak szóló, egy hosztot kezelő
+konzol, megbízható hálózaton. Nem többbérlős, és nem húz határt a „be van
+jelentkezve" és a „szabad neki" közé.
+
+**A bejelentkezés a hoszton root jogosultsággal egyenértékű.** A hitelesítés
+PAM-on át, valódi rendszerfiókkal történik — alapból `root`-tal, a hoszt saját
+jelszavával. Aki átjut a belépőképernyőn, az lemezt formázhat, `/etc/fstab`-ot
+írhat, systemd unitokat hozhat létre és szolgáltatásokat indíthat újra. Az
+alkalmazáson belül nincsenek jogosultsági szintek, és bevezetni őket látszat-
+biztonság lenne: minden funkciója root művelet.
+
+**A bejelentkezési kísérletek korlátozva vannak.** (cím, felhasználónév)
+páronként öt sikertelen próbálkozás ingyenes; a hatodiktól a várakozás 30
+másodperctől indulva duplázódik, 15 perces felső korláttal, egy második,
+forráscímenkénti számláló pedig megakadályozza, hogy a számlálás
+felhasználónevenként újrainduljon. A zárolt hívót a helyes jelszóval is
+elutasítja. A sikertelen kísérletek a felhasználónévvel és a forráscímmel
+együtt naplózódnak, tehát a `journalctl -u proxmox-nas-gui` grepelhető, és a
+fail2ban-nak is van mire illesztenie. A számlálók a memóriában élnek, a
+szolgáltatás újraindítása törli őket.
+
+**A sessionök a memóriában vannak.** A session süti `HttpOnly`, `Secure` és
+`SameSite=Lax`; a mögötte lévő token a futó processz egyik szótárában van, nem
+a lemezen. Ez az egy-worker telepítésből következik: a szolgáltatás
+újraindítása mindenkit kiléptet, ez az ára annak, hogy session token sosem kerül
+lemezre, és hogy nem kell megosztott session tároló. Egynél több worker
+elrontaná a sessionöket, és nem támogatott.
+
+**A share könyvtárak a hoszton mindenki számára elérhetők.** A share-ek úgy
+készülnek, ahogy az Unraid csinálja: a share gyökere `nobody:nogroup` és
+`0777`, a generált Samba konfiguráció pedig `force user = nobody`-t használ
+`create mask = 0666` és `directory mask = 0777` mellett. Egy share minden
+fájlja így a `nobody` tulajdona, és a hoszt bármely helyi fiókja olvashatja és
+írhatja. Ettől működik a hozzáférési mátrix: a jogosultságokat a Samba dönti
+el egyszer, csatlakozáskor, nem pedig chown-futtatások az adatokon. **A
+következmény kimondva: a GUI felhasználónkénti és csoportonkénti beállításai
+kizárólag az SMB hozzáférést szabályozzák. Nem védenek semmi ellen, aminek
+helyi fájlrendszer-hozzáférése van a hoszthoz** — másik shell fiók, az adott
+útvonalat bind mounttal látó konténer vagy VM, mentési feladat. Egy Proxmox
+hoszton ez rendszerint a rootot jelenti és mást senkit, ezért elfogadható itt
+ez a kompromisszum; ha a te telepítésedben nem az, a share útvonalait hoszt
+szinten kell védeni, nem ebben a GUI-ban.
+
+**A szolgáltatás rootként fut, systemd sandbox nélkül.** Fájlrendszereket
+csatol és választ le, lemezt formáz, `/etc/fstab`, `/etc/samba` és
+`/etc/systemd/system` alá ír, `systemctl`-t és `smbpasswd`-t hív — a
+`ProtectSystem` és társai tehát pontosan azokra az útvonalakra kellene
+visszanyitni, amelyek számítanak. A `PrivateTmp` itt kifejezetten káros: saját
+mount namespace-be teszi a szolgáltatást, az alkalmazás viszont a saját
+processzéből csatolja a lemezeket, így azok láthatatlanok maradnának a hoszt
+többi része számára. Ez vállalt kompromisszum, nem feledékenység, a gyakorlati
+következménye pedig az, hogy ebben az alkalmazásban minden hiba hoszt szintű
+hiba.
+
+**Ne tedd ki az internetre.** A szolgáltatás a `0.0.0.0:8481` címen figyel,
+önaláírt tanúsítvánnyal. LAN-ról vagy VPN-en át való elérésre készült. A port
+publikus kitétele egy felügyelet nélküli root PAM bejelentkezést tesz ki az
+internetre; ha mégis muszáj, tegyél elé saját hitelesítést és rate limitet
+végző reverse proxyt, és korlátozd a forráscímeket a tűzfalon.
 
 ## Konfiguráció (környezeti változók)
 

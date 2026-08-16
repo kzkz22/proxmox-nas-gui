@@ -87,6 +87,48 @@ def test_extra_options_rejects_managed_keys():
             make_pool(extra_options=bad)
 
 
+@pytest.mark.parametrize("bad", [
+    # % opens a systemd specifier: %n would expand to the unit name, and an
+    # unknown one makes systemd refuse to load the unit at all.
+    "func.getattr=%n",
+    "cache.attr=%%",
+    # $ is an environment expansion, and an unquoted one is re-split into
+    # words after it expands.
+    "fuse_msg_size=$FOO",
+    # systemd unescapes quotes and backslashes before splitting the command
+    # line, so either can restructure the argument list.
+    'func.getattr="newest"',
+    "func.getattr='newest'",
+    "cache.attr=a\\b",
+])
+def test_extra_options_rejects_systemd_metacharacters(bad):
+    with pytest.raises(ValueError):
+        make_pool(extra_options=bad)
+
+
+@pytest.mark.parametrize("good", [
+    "func.getattr=newest",
+    "cache.entry=1,cache.attr=300",
+    "posix_acl=true",
+    "statfs_ignore=nc",
+    "fuse_msg_size=1M",
+])
+def test_extra_options_still_accepts_real_mergerfs_options(good):
+    """Guards the guard above: a rule that rejected everything would pass the
+    rejection tests and quietly break the field."""
+    assert make_pool(extra_options=good).extra_options == good
+
+
+def test_the_generated_unit_carries_no_systemd_metacharacters():
+    """The end of the chain the validator protects - whatever survives
+    validation ends up on this ExecStart= line."""
+    unit = pool_unit(make_pool(extra_options="func.getattr=newest"))
+    exec_start = next(
+        line for line in unit.splitlines() if line.startswith("ExecStart=")
+    )
+    assert not set(exec_start) & set("%$\"'\\")
+
+
 def test_pool_unit_branch_modes():
     pool = make_pool(branches=[
         Branch(path="/mnt/disks/d1", mode=BranchMode.RW),

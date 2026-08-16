@@ -27,7 +27,16 @@ async def lifespan(_app: FastAPI):
         await monitor.stop()
 
 
-app = FastAPI(title="Proxmox NAS GUI", docs_url=None, redoc_url=None, lifespan=lifespan)
+# openapi_url is switched off alongside the two documentation UIs, not just
+# them: the schema route is mounted on the app rather than under the
+# session-checked router in routes.py, so leaving it on would publish the
+# whole management API surface - every path, method and request body - to
+# anyone who can reach the port without signing in.
+app = FastAPI(
+    title="Proxmox NAS GUI",
+    docs_url=None, redoc_url=None, openapi_url=None,
+    lifespan=lifespan,
+)
 app.include_router(api_router)
 
 

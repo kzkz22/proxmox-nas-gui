@@ -1,6 +1,16 @@
 import { toast } from "./dom.js";
 
-export class ApiError extends Error {}
+/** Carries the status alongside the message so a caller can tell the cases
+ *  apart without re-reading the response. The login screen needs it: a
+ *  rejected password and a lockout both arrive here as a failure, but only
+ *  one of them has a wait to show. */
+export class ApiError extends Error {
+  constructor(message, status = 0, retryAfter = 0) {
+    super(message);
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
 
 /** Raised on a 401 instead of calling showLogin() directly. The login screen
  *  restarts the app, which needs the API client, so a direct call would make
@@ -16,12 +26,12 @@ export async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, init);
   if (res.status === 401 && path !== "/login") {
     window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
-    throw new ApiError("unauthorized");
+    throw new ApiError("unauthorized", res.status);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = typeof data.detail === "string" ? data.detail : res.statusText;
-    throw new ApiError(msg);
+    throw new ApiError(msg, res.status, Number(res.headers.get("Retry-After")) || 0);
   }
   return data;
 }
