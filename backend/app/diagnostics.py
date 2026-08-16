@@ -364,39 +364,11 @@ def _fix_bind_unit(state: State, entity: str) -> str:
     return f"systemd unit rewritten for bind mount {entity}"
 
 
-def _restart_binds_on(state: State, pool_name: str) -> List[str]:
-    """Bring back up every bind mount whose source is in this pool.
-
-    Required after any pool remount: the bind units declare Requires= on the
-    pool service, so stopping the pool takes them down with it, and nothing
-    brings them back on its own. A bind left down means Samba serving an empty
-    directory over what looks like a working share.
-    """
-    restarted = []
-    for name, bind in sorted(state.bind_mounts.items()):
-        if bindconf.pool_for_path(state.pools, bind.source) == pool_name:
-            bind_ops.mount_bind(bind)
-            restarted.append(name)
-    return restarted
-
-
 def _remount_pool(state: State, entity: str) -> str:
-    """Rewrite the unit, then remount through it.
-
-    The rewrite is not redundant: mount_pool starts the systemd unit, so a
-    remount runs whatever options are on disk. If the unit file is also stale
-    - which is the normal state right after an upgrade that changed the
-    generated options - remounting without rewriting first would faithfully
-    reapply the old settings and report success. That would make this fix
-    depend on pool_unit_drift being pressed first, an ordering nothing in the
-    UI expresses.
-    """
     pool = state.pools.get(entity)
     if not pool:
         raise SystemOpError(f"no such pool: {entity}")
-    pool_ops.write_pool_unit(pool)
-    pool_ops.remount_pool(pool)
-    restarted = _restart_binds_on(state, entity)
+    restarted = bind_ops.remount_pool_with_binds(state, pool)
     detail = f"pool {entity} remounted"
     if restarted:
         detail += f"; bind mounts restarted: {', '.join(restarted)}"
@@ -427,11 +399,10 @@ def _fix_pool_passthrough(state: State, entity: str) -> str:
     if pool.moveonenospc:
         pool.moveonenospc = False
         changed.append("moveonenospc=false")
-    pool_ops.write_pool_unit(pool)
     if pool_ops.is_mounted(pool.mountpoint):
-        pool_ops.remount_pool(pool)
-        _restart_binds_on(state, entity)
+        bind_ops.remount_pool_with_binds(state, pool)
     else:
+        pool_ops.write_pool_unit(pool)
         pool_ops.mount_pool(pool)
     return f"pool {entity}: {', '.join(changed)}; remounted"
 

@@ -113,6 +113,8 @@
   "pool.passthroughHint": "A kernel közvetlenül a branch fájlján végzi az olvasást/írást, a mergerfs folyamat teljes kihagyásával — közel natív sebesség. Kernel 6.9+ és mergerfs 2.41+ kell hozzá; ha nincs meg, a pool nem fog felcsatolódni. Bekapcsolva a moveonenospc nem működik (a mergerfs nem látja az írásokat, így a betelést sem), és az írás-összevonás sem használható mellette. Csak felcsatoláskor lép életbe.",
   "pool.policy": "Létrehozási házirend (hova kerülnek az új fájlok)",
   "pool.quickAdd": "Gyors hozzáadás:",
+  "pool.remountPrompt": "Mentve. Ezek a beállítások viszont csak újracsatolás után lépnek életbe: {options}\n\nÚjracsatoljuk most a poolt? A rá épülő bind mountokat is visszakapcsoljuk. A megosztások néhány másodpercre elérhetetlenné válnak.",
+  "pool.remounted": "A pool újracsatolva, a bind mountok visszakapcsolva.",
   "pool.unmount": "Leválasztás",
   "pools.add": "Új pool",
   "pools.disksTitle": "Diszkek",

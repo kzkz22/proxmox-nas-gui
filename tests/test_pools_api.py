@@ -9,6 +9,7 @@ import json
 
 import pytest
 
+from app.storage import binds as bind_ops
 from app.storage import pools as pool_ops
 from app.storage.models import Branch, Pool
 
@@ -43,6 +44,22 @@ def stored(sandbox):
 
 def share_at(path: str) -> dict:
     return {"media": {"name": "media", "path": path}}
+
+
+def make_pool(**kwargs) -> Pool:
+    return Pool(name="media", mountpoint="/mnt/pool/media",
+                branches=[Branch(path="/mnt/disks/d1")], **kwargs)
+
+
+def fake_live(monkeypatch, **overrides):
+    """Stand in for what the running mergerfs reports, defaulting to a pool
+    running the GUI defaults. Keyed by option so passthrough does not read
+    back as "false" - a pool that answers the wrong shape for one option
+    would otherwise look like drift on every check."""
+    live = {"cache.files": "auto-full", "cache.writeback": "false",
+            "dropcacheonclose": "false", "passthrough": "off"}
+    live.update(overrides)
+    monkeypatch.setattr(pool_ops, "live_option", lambda _mp, key: live.get(key))
 
 
 def test_delete_is_refused_while_a_share_points_at_the_pool(
@@ -160,48 +177,71 @@ def test_removing_a_branch_does_not_warn_when_the_folder_survives(
     assert response.json()["warning"] is None
 
 
-# --- remount-only options -----------------------------------------------
+# --- what the running pool could not adopt ------------------------------
 
-def make_pool(**kwargs) -> Pool:
-    return Pool(name="media", mountpoint="/mnt/pool/media",
-                branches=[Branch(path="/mnt/disks/d1")], **kwargs)
-
-
-def test_changing_writeback_warns_that_a_remount_is_needed():
-    # cache.writeback is negotiated when the FUSE connection is set up, so a
-    # save cannot apply it to a running pool - saying nothing would leave the
-    # user benchmarking a setting they are not actually running.
-    warning = pool_ops.remount_only_warning(
-        make_pool(cache_writeback=True), make_pool(), "/nonexistent/.mergerfs"
-    )
-
-    assert warning is not None
-    assert "cache.writeback=true" in warning
-
-
-def test_changed_extra_options_warn_too():
-    warning = pool_ops.remount_only_warning(
-        make_pool(extra_options="func.getattr=newest"), make_pool(),
-        "/nonexistent/.mergerfs",
-    )
-
-    assert warning is not None
-    assert "func.getattr=newest" in warning
-
-
-def test_untouched_options_do_not_warn():
-    # A save that leaves the remount-only fields alone has nothing to report,
-    # however they happen to be set - otherwise every single save of a pool
-    # with extra options would nag.
-    pool = make_pool(cache_writeback=True, extra_options="func.getattr=newest")
-
-    assert pool_ops.remount_only_warning(pool, pool, "/nonexistent/.mergerfs") is None
-
-
-def test_runtime_update_on_an_unmounted_pool_is_a_no_op(monkeypatch):
+def test_nothing_to_report_when_the_pool_is_not_mounted(monkeypatch):
     monkeypatch.setattr(pool_ops, "is_mounted", lambda _mp: False)
 
-    assert pool_ops.runtime_update(make_pool(cache_writeback=True), make_pool()) is None
+    result = pool_ops.runtime_update(make_pool(cache_writeback=True))
+
+    assert result == {"warning": None, "remount_needed": []}
+
+
+def test_a_mount_time_option_the_pool_is_not_running_is_reported(monkeypatch):
+    # cache.writeback is negotiated at FUSE connection setup, so a save
+    # cannot apply it - and staying quiet would leave someone benchmarking a
+    # setting they are not running.
+    fake_live(monkeypatch)
+
+    stale = pool_ops.remount_needed(make_pool(cache_writeback=True), "/ctl")
+
+    assert stale == ["cache.writeback=true"]
+
+
+def test_a_mount_time_option_already_running_is_not_reported(monkeypatch):
+    fake_live(monkeypatch)
+
+    assert pool_ops.remount_needed(make_pool(), "/ctl") == []
+
+
+def test_extra_options_the_pool_accepts_are_not_reported(monkeypatch, tmp_path):
+    # cache.attr and friends apply instantly through the control file.
+    # Telling the user to remount for them would be simply untrue, so they
+    # are pushed and only reported if the push is refused.
+    fake_live(monkeypatch)
+    pushed = {}
+    monkeypatch.setattr(pool_ops.os, "setxattr",
+                        lambda _ctl, key, value: pushed.__setitem__(key, value))
+    pool = make_pool(extra_options="cache.statfs=60,cache.attr=300")
+
+    assert pool_ops.remount_needed(pool, "/ctl") == []
+    assert pushed == {
+        "user.mergerfs.cache.statfs": b"60",
+        "user.mergerfs.cache.attr": b"300",
+    }
+
+
+def test_extra_options_the_pool_refuses_are_reported(monkeypatch):
+    fake_live(monkeypatch)
+
+    def refuse(_ctl, _key, _value):
+        raise OSError("not a runtime option")
+    monkeypatch.setattr(pool_ops.os, "setxattr", refuse)
+
+    stale = pool_ops.remount_needed(make_pool(extra_options="fuse_msg_size=1M"), "/ctl")
+
+    assert stale == ["fuse_msg_size=1M"]
+
+
+def test_extra_options_reported_when_unchanged_too(monkeypatch):
+    # Deliberately not "only report what this save changed": a pool that has
+    # been running the wrong setting for a week should say so every time,
+    # now that the client offers to remount.
+    fake_live(monkeypatch)
+
+    stale = pool_ops.remount_needed(make_pool(passthrough="rw"), "/ctl")
+
+    assert stale == ["passthrough=rw"]
 
 
 # --- option drift against the running mount -----------------------------
@@ -261,3 +301,32 @@ def test_extra_options_win_over_the_field_in_drift(monkeypatch):
     })
 
     assert pool_ops.option_drift(make_pool(extra_options="cache.files=partial")) == []
+
+
+# --- the remount endpoint -----------------------------------------------
+
+def test_remount_restarts_the_pools_bind_mounts(
+    auth_client, stored, no_systemd, monkeypatch, tmp_path
+):
+    # The bind units declare Requires= on the pool service, so stopping the
+    # pool stops them. A remount that left them down would hand Samba an
+    # empty directory over what still looks like a working share.
+    mountpoint = str(tmp_path / "pool" / "bulk")
+    pool = {"name": "bulk", "mountpoint": mountpoint,
+            "branches": [{"path": str(tmp_path / "d1"), "mode": "RW"}]}
+    stored(pools={"bulk": pool}, bind_mounts={"kz": {
+        "name": "kz", "source": f"{mountpoint}/kz", "target": "/mnt/tree/kz",
+    }})
+    monkeypatch.setattr(pool_ops, "remount_pool", lambda _p: None)
+    monkeypatch.setattr(pool_ops, "write_pool_unit", lambda _p: None)
+    monkeypatch.setattr(bind_ops, "mount_bind", lambda _b: None)
+
+    response = auth_client.post("/api/pools/bulk/remount")
+
+    assert response.status_code == 200
+    assert response.json()["binds_restarted"] == ["kz"]
+
+
+def test_remounting_an_unknown_pool_is_a_404(auth_client, stored, no_systemd):
+    stored()
+    assert auth_client.post("/api/pools/nope/remount").status_code == 404

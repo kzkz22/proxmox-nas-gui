@@ -138,3 +138,26 @@ def binds_using_path(state: State, path: str) -> List[str]:
         name for name, bind in state.bind_mounts.items()
         if bind.source == p or bind.source.startswith(prefix)
     )
+
+
+def remount_pool_with_binds(state: State, pool) -> List[str]:
+    """Remount a pool and bring its bind mounts back up. Returns their names.
+
+    The two halves belong together and are never wanted apart: the bind units
+    declare Requires= on the pool service, so stopping the pool takes them
+    down with it, and nothing brings them back on its own. A bind left down
+    means Samba serving an empty directory over what still looks like a
+    working share - the exact failure the bind units exist to prevent.
+
+    Lives here rather than in pools.py because pools.py cannot see bind
+    mounts (binds imports pools, not the other way round), and both the
+    diagnostics fix and the pool editor's remount need it.
+    """
+    pools.write_pool_unit(pool)
+    pools.remount_pool(pool)
+    restarted = []
+    for name, bind in sorted(state.bind_mounts.items()):
+        if bindconf.pool_for_path(state.pools, bind.source) == pool.name:
+            mount_bind(bind)
+            restarted.append(name)
+    return restarted
