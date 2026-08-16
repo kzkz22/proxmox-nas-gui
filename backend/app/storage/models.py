@@ -154,6 +154,15 @@ class Pool(BaseModel):
         v = v.strip().strip(",")
         if not v:
             return ""
+        # The same rule the paths above get, and for the same reason: this
+        # string is interpolated straight into the pool unit's ExecStart=,
+        # where % opens a specifier expansion and quotes and backslashes are
+        # unescaped before the command line is split. No mergerfs option needs
+        # any of those characters, while a single stray % silently produces a
+        # unit systemd refuses to load - so the pool stops mounting and the
+        # cause is nowhere near the field that was edited.
+        if UNSAFE_UNIT_CHARS.search(v):
+            raise ValueError("invalid characters in extra options")
         for opt in v.split(","):
             if not opt or re.search(r"\s", opt):
                 raise ValueError("invalid extra options")

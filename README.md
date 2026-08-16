@@ -56,10 +56,14 @@ Unraid array), and share it immediately.
   filesystem but aren't mounted yet, and mounts them under `/mnt/disks/<name>`
   with an fstab entry
 - **Format blank disks/partitions**: devices with no filesystem show up in
-  their own list; pick ext4 or xfs and the GUI formats the device with
-  `wipefs`+`mkfs` (directly on the device, no partition table), then mounts
-  it immediately. The Proxmox system disk (and every partition/LVM volume on
-  it) never appears in either list
+  their own list; pick ext4 or xfs and the GUI formats them with
+  `wipefs`+`mkfs`, then mounts the result immediately. A whole blank *disk*
+  gets a GPT label with one full-size partition first, and it is that
+  partition (`/dev/sdX1`) that is formatted and mounted — a bare filesystem
+  on the disk device works for mergerfs but confuses other tools and
+  operating systems if the disk is ever moved. An already-partitioned device
+  is formatted in place, with no repartitioning. The Proxmox system disk (and
+  every partition/LVM volume on it) never appears in either list
 - **Presets plus an advanced field**: create policy (mfs, epmfs, ff, pfrd, …)
   with short explanations, minimum free space, `moveonenospc`, plus a
   free-form text field for any other mergerfs option
@@ -369,11 +373,84 @@ little RAM), the file cache can be set back to `off` in the pool editor.
   latter is assigned in discovery order, so after a reboot the same setting
   could apply to a different disk.
 
+## Security model
+
+What this tool is, stated plainly, because several of the design decisions
+below only make sense once it is: a single-administrator management console
+for one host, on a trusted network. It is not multi-tenant, and it draws no
+line between "logged in" and "allowed to do this".
+
+**Signing in is equivalent to root on the host.** Authentication goes through
+PAM against a real system account — by default `root`, the host's own
+password. Anyone who gets past the login screen can format disks, edit
+`/etc/fstab`, write systemd units and restart services. There are no
+permission levels inside the application, and adding one would be
+security theatre: every feature it offers is a root operation.
+
+**Sign-in attempts are throttled.** Five failed attempts per (address,
+username) pair are free; from the sixth, the wait doubles from 30 seconds up
+to a 15-minute cap, and a second counter per source address stops the count
+being reset by trying a different username each time. A locked-out caller is
+refused even with the correct password. Failures are logged with the username
+and source address, so `journalctl -u proxmox-nas-gui` is greppable and
+fail2ban has something to match. The counters live in memory and a service
+restart clears them.
+
+**Cross-site requests are refused twice over.** The session cookie is
+`SameSite=Lax`, so a browser will not attach it to a cross-site write in the
+first place. On top of that, every `POST`/`PUT`/`PATCH`/`DELETE` is checked:
+if the request carries an `Origin` header that does not match the host it was
+sent to, it is refused with a 403 before the session is even looked at. Reads
+are exempt — nothing here changes state on a `GET`. Requests with no `Origin`
+at all are allowed, so `curl` and scripts keep working; a page mounting a CSRF
+attack cannot suppress that header, so its absence is not a case the attack
+can arrange. Behind a reverse proxy that serves the UI under a different name
+than it forwards, list the public origin in `PNAS_TRUSTED_ORIGINS`.
+
+**Sessions live in memory.** The session cookie is `HttpOnly`, `Secure` and
+`SameSite=Lax`; the token behind it is kept in a dictionary in the running
+process, not on disk. This follows from the single-worker deployment: a
+service restart signs everybody out, which is the accepted cost of never
+writing a session token to disk and of not needing a shared session store.
+Running more than one worker would break sessions and is not supported.
+
+**Share directories are world-accessible on the host.** Shares are set up the
+way Unraid does it: the share root is `nobody:nogroup` and `0777`, and the
+generated Samba config uses `force user = nobody` with `create mask = 0666`
+and `directory mask = 0777`. Every file in a share therefore belongs to
+`nobody` and is readable and writable by any local account on the host. This
+is what makes the access matrix work — permissions are decided by Samba at
+connection time, once, rather than by chown runs across the data. **The
+consequence is explicit: the per-user and per-group settings in this GUI
+control SMB access only. They are not a protection against anything with
+local filesystem access to the host** — another shell account, a container or
+VM with a bind mount of the path, or a backup job. On a Proxmox host that
+usually means root and nothing else, which is why this trade-off is
+acceptable here; if it isn't in your setup, the share paths need protecting
+at the host level, not in this GUI.
+
+**The service runs as root, without systemd sandboxing.** It mounts and
+unmounts filesystems, formats disks, writes into `/etc/fstab`, `/etc/samba`
+and `/etc/systemd/system`, and drives `systemctl` and `smbpasswd` — so
+`ProtectSystem` and friends would have to be opened back up for exactly the
+paths that matter. `PrivateTmp` is worse than useless here: it puts the
+service in its own mount namespace, and the application mounts disks from its
+own process, so the mounts would become invisible to the rest of the host.
+The trade-off is accepted rather than overlooked, and the practical
+consequence is that any bug in this application is a host-level bug.
+
+**Keep it off the internet.** The service listens on `0.0.0.0:8481` with a
+self-signed certificate. It is meant to be reached from a LAN or over a VPN.
+Exposing the port publicly puts an unattended root PAM login on the internet;
+if you must, put it behind a reverse proxy that does its own authentication
+and rate limiting, and restrict the source addresses at the firewall.
+
 ## Configuration (environment variables)
 
 | Variable | Default | Description |
 |---|---|---|
 | `PNAS_ADMIN_USERS` | `root` | System users allowed to log into the GUI (comma-separated) |
+| `PNAS_TRUSTED_ORIGINS` | – | Extra origins accepted for state-changing requests, e.g. `https://nas.example.com` (comma-separated). Only needed behind a reverse proxy that serves the UI under a different name than it forwards |
 | `PNAS_STATE_DIR` | `/etc/proxmox-nas-gui` | Directory for state.json |
 | `PNAS_SMB_CONF` | `/etc/samba/smb.conf` | The main Samba config |
 | `PNAS_GEN_CONF` | `/etc/samba/proxmox-nas-gui.conf` | Where the generated config is written |
@@ -401,6 +478,23 @@ cd backend && ../venv/bin/uvicorn app.main:app --reload   # dev server
 
 `pytest` runs from the repo root; `pyproject.toml` puts `backend/` on the
 import path.
+
+### Dependency versions
+
+`backend/requirements.txt` pins exact versions rather than floors. The
+installer runs `pip` as root on a live host, so "whatever is newest today"
+would decide what a root-running service is built from — and it had already
+drifted once: a `fastapi>=0.110` floor was resolving to a Starlette that had
+gone 1.x. `starlette` and `pydantic` are pinned too even though nothing
+imports them directly, because FastAPI asks for them without an upper bound,
+so a major release of either arrives without FastAPI changing at all.
+
+To update: resolve and install into a fresh venv, run the full suite, then
+change the versions in one commit. Two limits worth stating — this is
+installation determinism, not a lockfile (the rest of the transitive graph
+still floats and nothing is hash-verified), and pinned versions do not pick up
+upstream security fixes on their own, so the update is a task rather than a
+side effect.
 
 ### Structure
 

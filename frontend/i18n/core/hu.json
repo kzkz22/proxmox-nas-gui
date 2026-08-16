@@ -17,6 +17,7 @@
   "common.save": "Mentés",
   "common.saved": "Elmentve",
   "login.error": "Hibás felhasználónév vagy jelszó",
+  "login.locked": "Túl sok sikertelen próbálkozás. Próbáld újra {seconds} másodperc múlva.",
   "login.password": "Jelszó",
   "login.submit": "Belépés",
   "login.title": "Bejelentkezés",

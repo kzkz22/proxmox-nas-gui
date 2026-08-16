@@ -1,5 +1,23 @@
-fastapi>=0.110
-uvicorn[standard]>=0.29
-python-pam>=2.0
+# Pinned exactly rather than floored. install.sh runs pip as root on a live
+# host, so "whatever is newest today" decides what a root-running service is
+# built from - and it had already drifted: a >=0.110 floor on fastapi was
+# resolving to a starlette that had gone 1.x.
+#
+# To update: resolve and install into a fresh venv, run the full test suite,
+# then change the versions here in one commit. This buys installation
+# determinism, not a lockfile - the rest of the transitive graph still floats,
+# and nothing here is hash-verified.
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+python-pam==2.0.2
 # python-pam imports six but does not declare it as a dependency
-six>=1.16
+six==1.16.0
+
+# Not imported directly, pinned anyway: fastapi asks for starlette>=0.46 and
+# pydantic>=2.9 with no upper bound, so a major release of either arrives
+# without fastapi changing at all - and these two are what route the requests
+# and validate every request body. pydantic pins pydantic-core itself, so that
+# one follows along. The packages under uvicorn are left floating: they sit
+# further from the application's own surface.
+starlette==1.6.0
+pydantic==2.13.4

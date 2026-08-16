@@ -1,4 +1,4 @@
-import { api } from "./api.js";
+import { api, ApiError } from "./api.js";
 import { $, esc, toast, view } from "./dom.js";
 import { t } from "./i18n.js";
 import { startApp } from "../router.js";
@@ -23,8 +23,11 @@ export function showLogin() {
     try {
       await api("/login", { method: "POST", body: { username: f.username.value, password: f.password.value } });
       await startApp();
-    } catch {
-      toast(t("login.error"), "err");
+    } catch (e) {
+      // A lockout has to say so, otherwise the correct password looks wrong
+      // and the natural reaction is to keep trying, which extends the wait.
+      const wait = e instanceof ApiError && e.status === 429 ? e.retryAfter : 0;
+      toast(wait ? t("login.locked", { seconds: wait }) : t("login.error"), "err", 8000);
     }
   });
 }
