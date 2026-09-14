@@ -282,6 +282,20 @@ jelentkeznek, hanem csak lassúságként:
   bekapcsolva. A javítás bekapcsolja, kikapcsolja a vele ütközőket
   (moveonenospc, írás-összevonás), és újracsatol
 
+És egy ellenőrzés arra, ami szerveroldalról egyáltalán nem látszik:
+
+- **Kliensoldali cache-fájlok a megosztás gyökerében**: a `treeinfo.wc` a
+  Total Commander könyvtárfa-gyorsítótára. A TC ebből navigál ahelyett, hogy a
+  szervert kérdezné, így egy elavult példány mellett az azóta létrehozott
+  mappák megnyitása meghiúsul — hibaüzenet nélkül, csak egy hangjelzéssel —,
+  miközben a jogosultságok, az ACL-ek, a Samba beállításai és a hosztról
+  indított `smbclient` is hibátlan. Mivel a fájl a megosztáson él, minden TC-s
+  kliens ugyanazt az elavult másolatot használja. A `.DS_Store` és a
+  `Thumbs.db` ugyanígy megjelenik, csak tájékoztató szinten: ártalmatlanok, de
+  a kliensre valók. A javítás a megosztás gyökeréből törli őket (és csak
+  onnan — nincs rekurzió, csak a felsorolt nevek), a kliens pedig
+  újra létrehozza, ha kell
+
 ![Diagnosztika](docs/hu/diag.png)
 
 ## Telepítés

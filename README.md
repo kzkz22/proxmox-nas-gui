@@ -278,6 +278,19 @@ as slowness:
   turned on for the pool. The fix turns it on, turns off what conflicts with
   it (moveonenospc, write coalescing), and remounts
 
+And one check for a problem that is invisible from the server side entirely:
+
+- **Client cache files in a share root**: `treeinfo.wc` is Total Commander's
+  directory tree cache. TC navigates from that copy instead of asking the
+  server, so a stale one makes folders created since refuse to open — no error
+  dialog, just a beep — while permissions, ACLs, the Samba config and even
+  `smbclient` run from the host all come back clean. Because the file lives on
+  the share, every TC client works from the same stale copy. `.DS_Store` and
+  `Thumbs.db` get the same treatment at info severity: harmless, but they
+  belong on the client. The fix deletes them from the share root (and only
+  from there — no recursion, whitelist only), and the client recreates them if
+  it wants them
+
 ![Diagnostics](docs/en/diag.png)
 
 ## Installation

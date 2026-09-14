@@ -76,8 +76,13 @@ function findingText(f, part) {
     : t(`diagfinding.${f.id}.${part}`, f.vars);
 }
 
+/** Same vars the title and body get: confirm texts name the thing they are
+ *  about ("{files} will be deleted"), and without them t() leaves the
+ *  placeholder standing in the dialog. */
 function findingConfirm(f) {
-  return f.category === "disks" ? t(`sleepwarn.${f.id}.confirm`) : t(`diagfinding.${f.id}.confirm`);
+  return f.category === "disks"
+    ? t(`sleepwarn.${f.id}.confirm`, f.vars)
+    : t(`diagfinding.${f.id}.confirm`, f.vars);
 }
 
 function findingRow(f) {

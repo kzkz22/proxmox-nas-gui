@@ -9,14 +9,16 @@ a single disk, widened with "category" (for grouping in the UI) and "entity"
 (the pool/bind/share/disk name a fix targets), so the frontend can render and
 FIXABLE dispatch can find both automatically.
 
-Two problems this exists to catch before they are found by hand: a bind mount
-source that has quietly become unwritable (root:root 0755 instead of the
+Three problems this exists to catch before they are found by hand: a bind
+mount source that has quietly become unwritable (root:root 0755 instead of the
 nobody:nogroup 0777 every presentation folder needs - see fsops.apply_share_
-perms), and a bind mount source that currently lives on only one branch of its
+perms); a bind mount source that currently lives on only one branch of its
 pool, so removing that one disk would make it - and everything the bind mount
 shows through it - vanish from the mergerfs union with nothing actually
-deleted. Both happened once already; see storage/pools.py orphaned_binds()
-and storage/api/binds.py's create_source() calling apply_share_perms.
+deleted; and a stale client-side cache file left in a share root, which breaks
+browsing in a way no server-side check can see. All three happened once
+already; see storage/pools.py orphaned_binds(), storage/api/binds.py's
+create_source() calling apply_share_perms, and TREE_CACHE_FILES below.
 """
 
 import grp
@@ -62,6 +64,51 @@ def _wrong_perms(path: str) -> bool:
     if st.st_uid != want_uid or st.st_gid != want_gid:
         return True
     return stat.S_IMODE(st.st_mode) != 0o777
+
+
+# Cache files clients drop into the directory they treat as a drive root.
+#
+# TREE_CACHE_FILES is the one that actually breaks things. Total Commander
+# writes treeinfo.wc to cache a drive's directory tree and then navigates from
+# that copy instead of asking the server. Once it is stale, folders created
+# since simply refuse to open - no error dialog, just a beep - while every
+# server-side check (permissions, ACLs, xattrs, Samba config, even smbclient
+# from the host) comes back perfectly clean, because nothing is wrong there.
+# It cost a full debugging session to find; hence this check.
+#
+# CLUTTER_FILES do no such damage - they are Finder/Explorer droppings that
+# belong on the client rather than on shared storage. Reported at info.
+#
+# Matched case-insensitively: the spelling depends on whichever client wrote
+# the file, and Samba hands the name through to the filesystem verbatim.
+TREE_CACHE_FILES = frozenset({"treeinfo.wc"})
+CLUTTER_FILES = frozenset({".ds_store", "thumbs.db", "ehthumbs.db"})
+
+
+def _cache_files_in(path: str, names: frozenset) -> List[str]:
+    """The given cache files sitting directly in `path`, by their real names.
+
+    Deliberately not recursive. These files appear wherever a client has
+    browsed, so walking a NAS share to collect them would cost far more than
+    the finding is worth - and the share root is where treeinfo.wc actually
+    does damage, because that is the directory a mapped drive makes its root.
+    """
+    try:
+        with os.scandir(path) as entries:
+            found = [e.name for e in entries
+                     if e.name.lower() in names and _is_plain_file(e)]
+    except OSError:
+        return []
+    return sorted(found)
+
+
+def _is_plain_file(entry: os.DirEntry) -> bool:
+    """Never follows symlinks: the whitelist decides what may be deleted, and
+    a symlink wearing one of these names must not stand in for its target."""
+    try:
+        return entry.is_file(follow_symlinks=False)
+    except OSError:
+        return False
 
 
 # --- checks ------------------------------------------------------------------
@@ -198,6 +245,7 @@ def _share_checks(state: State) -> List[dict]:
                 {"share": name, "path": share.path},
                 command=f"chown nobody:nogroup {share.path} && chmod 0777 {share.path}",
             ))
+        out.extend(_cache_file_findings(name, share.path))
         for user in sorted(u for u in share.user_access if u not in state.users):
             out.append(_finding(
                 "share_unknown_user", "shares", name, "warn", False,
@@ -208,6 +256,26 @@ def _share_checks(state: State) -> List[dict]:
                 "share_unknown_group", "shares", name, "warn", False,
                 {"share": name, "group": group},
             ))
+    return out
+
+
+def _cache_file_findings(name: str, path: str) -> List[dict]:
+    """One finding per kind, not per file, so a share holding both a stale
+    tree cache and a pile of Thumbs.db does not report the serious one twice
+    over at the wrong severity."""
+    out: List[dict] = []
+    for id_, names, severity in (
+        ("share_tree_cache", TREE_CACHE_FILES, "warn"),
+        ("share_client_clutter", CLUTTER_FILES, "info"),
+    ):
+        found = _cache_files_in(path, names)
+        if not found:
+            continue
+        out.append(_finding(
+            id_, "shares", name, severity, True,
+            {"share": name, "path": path, "files": ", ".join(found)},
+            command="rm -f " + " ".join(os.path.join(path, f) for f in found),
+        ))
     return out
 
 
@@ -336,6 +404,40 @@ def _fix_share_wrong_perms(state: State, entity: str) -> str:
     return f"ownership fixed on {share.path}"
 
 
+def _remove_cache_files(state: State, entity: str, names: frozenset) -> str:
+    """Delete the whitelisted cache files from a share root.
+
+    The only fix here that deletes anything, so it is deliberately narrow: the
+    share's own root directory, no recursion, and only names that are in the
+    whitelist and are plain files right now. Everything it can remove is
+    regenerated by the client that wanted it - that is what makes deleting the
+    safe answer rather than a destructive one.
+    """
+    share = state.shares.get(entity)
+    if not share:
+        raise SystemOpError(f"no such share: {entity}")
+    removed = []
+    for fname in _cache_files_in(share.path, names):
+        target = os.path.join(share.path, fname)
+        try:
+            os.unlink(target)
+        except OSError as exc:
+            done = f"; already removed: {', '.join(removed)}" if removed else ""
+            raise SystemOpError(f"could not remove {target}: {exc}{done}")
+        removed.append(fname)
+    if not removed:
+        raise SystemOpError(f"nothing left to remove in {share.path}")
+    return f"removed from {share.path}: {', '.join(removed)}"
+
+
+def _fix_share_tree_cache(state: State, entity: str) -> str:
+    return _remove_cache_files(state, entity, TREE_CACHE_FILES)
+
+
+def _fix_share_client_clutter(state: State, entity: str) -> str:
+    return _remove_cache_files(state, entity, CLUTTER_FILES)
+
+
 def _fix_disk_mount_not_mounted(state: State, entity: str) -> str:
     dm = state.disk_mounts.get(entity)
     if not dm:
@@ -413,6 +515,8 @@ FIXABLE: Dict[str, Callable[[State, str], str]] = {
     "bind_source_missing": _fix_bind_source_missing,
     "bind_source_wrong_perms": _fix_bind_source_wrong_perms,
     "share_wrong_perms": _fix_share_wrong_perms,
+    "share_tree_cache": _fix_share_tree_cache,
+    "share_client_clutter": _fix_share_client_clutter,
     "disk_mount_not_mounted": _fix_disk_mount_not_mounted,
     "pool_unit_missing": _fix_pool_unit,
     "pool_unit_drift": _fix_pool_unit,

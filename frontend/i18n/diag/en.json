@@ -64,6 +64,14 @@
   "diagfinding.share_wrong_perms.body": "{path} is not owned nobody:nogroup with mode 0777. With Samba's “force user = nobody”, that means clients can list the folder but cannot write into it.",
   "diagfinding.share_wrong_perms.confirm": "The share's owner will be set to nobody:nogroup and its mode to 0777. Continue?",
 
+  "diagfinding.share_tree_cache.title": "Share “{share}” has a client-side tree cache in its root: {files}",
+  "diagfinding.share_tree_cache.body": "Total Commander's directory tree cache ({files}) is sitting in the root of {path}. TC navigates from that copy instead of asking the server, so once it goes stale, opening folders created since then fails with no error dialog at all - the user just gets a beep. Nothing looks wrong on the server meanwhile: permissions, ACLs, the Samba config and even smbclient run from the host all come back clean, because nothing is wrong there. And because the file lives on the share, it is shared state: every client browsing with TC works from the same stale copy. The fix deletes it, and TC recreates it on its next run. To stop it coming back, point the client's tree files at a local folder with the TreeFileLocation key in the [Configuration] section of wincmd.ini.",
+  "diagfinding.share_tree_cache.confirm": "These will be deleted from the share root: {files}. The client recreates them if it needs them. Continue?",
+
+  "diagfinding.share_client_clutter.title": "Share “{share}” has client-side clutter in its root: {files}",
+  "diagfinding.share_client_clutter.body": "Cache files left behind by Finder or Explorer ({files}) are sitting in the root of {path}. They break nothing, but they belong on the client rather than on shared storage: every user sees them, and they end up in backups. The fix deletes them, and the client recreates them if it needs them.",
+  "diagfinding.share_client_clutter.confirm": "These will be deleted from the share root: {files}. The client recreates them if it needs them. Continue?",
+
   "diagfinding.share_unknown_user.title": "Share “{share}” references a user that no longer exists: {user}",
   "diagfinding.share_unknown_user.body": "“{user}” appears in the share's access list but is no longer among the users. Edit the share to remove or replace the reference.",
 

@@ -289,6 +289,146 @@ def test_share_known_user_is_not_flagged(tmp_path, stub_nobody):
     assert diag._share_checks(st) == []
 
 
+# --- client cache files in a share root -------------------------------------
+
+def share_root(tmp_path, *files):
+    """A share root with the correct ownership, holding the given files, so a
+    cache-file test never has to read around a share_wrong_perms finding."""
+    path = tmp_path / "media"
+    path.mkdir()
+    path.chmod(0o777)
+    for name in files:
+        (path / name).write_text("x")
+    return path
+
+
+def test_stale_tree_cache_is_a_fixable_warning(tmp_path, stub_nobody):
+    path = share_root(tmp_path, "treeinfo.wc")
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    findings = diag._share_checks(st)
+
+    assert len(findings) == 1
+    f = findings[0]
+    assert (f["id"], f["severity"], f["fixable"]) == ("share_tree_cache", "warn", True)
+    assert f["vars"]["files"] == "treeinfo.wc"
+    assert f["command"] == f"rm -f {path / 'treeinfo.wc'}"
+
+
+def test_client_clutter_is_only_info(tmp_path, stub_nobody):
+    path = share_root(tmp_path, ".DS_Store", "Thumbs.db")
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    findings = diag._share_checks(st)
+
+    assert [(f["id"], f["severity"]) for f in findings] == [("share_client_clutter", "info")]
+    assert findings[0]["vars"]["files"] == ".DS_Store, Thumbs.db"
+
+
+def test_the_two_kinds_are_reported_separately(tmp_path, stub_nobody):
+    """Lumping them together would report the tree cache - the one that
+    actually breaks browsing - at the clutter's severity, or the other way
+    round."""
+    path = share_root(tmp_path, "treeinfo.wc", "Thumbs.db")
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    findings = diag._share_checks(st)
+
+    assert [(f["id"], f["severity"]) for f in findings] == [
+        ("share_tree_cache", "warn"), ("share_client_clutter", "info"),
+    ]
+
+
+def test_cache_file_names_are_matched_case_insensitively(tmp_path, stub_nobody):
+    """The spelling is whatever the client wrote; Samba passes it through."""
+    path = share_root(tmp_path, "TREEINFO.WC", "thumbs.db")
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    assert [f["id"] for f in diag._share_checks(st)] == [
+        "share_tree_cache", "share_client_clutter",
+    ]
+
+
+def test_a_directory_wearing_a_cache_name_is_not_flagged(tmp_path, stub_nobody):
+    path = share_root(tmp_path)
+    (path / "treeinfo.wc").mkdir()
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    assert diag._share_checks(st) == []
+
+
+def test_cache_files_deeper_in_the_tree_are_ignored(tmp_path, stub_nobody):
+    """Only the share root is checked - walking a NAS share to find every
+    Thumbs.db would cost far more than the finding is worth."""
+    path = share_root(tmp_path)
+    (path / "holiday").mkdir()
+    (path / "holiday" / "Thumbs.db").write_text("x")
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    assert diag._share_checks(st) == []
+
+
+def test_a_clean_share_root_is_not_flagged(tmp_path, stub_nobody):
+    path = share_root(tmp_path, "holiday.jpg", "notes.txt")
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    assert diag._share_checks(st) == []
+
+
+def test_fixing_the_tree_cache_deletes_only_that_file(tmp_path, stub_nobody):
+    path = share_root(tmp_path, "treeinfo.wc", "Thumbs.db", "holiday.jpg")
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    detail = diag.apply_fix(st, "share_tree_cache", "media")
+
+    assert "treeinfo.wc" in detail
+    assert not (path / "treeinfo.wc").exists()
+    assert (path / "Thumbs.db").exists()
+    assert (path / "holiday.jpg").exists()
+
+
+def test_fixing_the_clutter_deletes_every_clutter_file(tmp_path, stub_nobody):
+    path = share_root(tmp_path, ".DS_Store", "Thumbs.db", "treeinfo.wc")
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    diag.apply_fix(st, "share_client_clutter", "media")
+
+    assert not (path / ".DS_Store").exists()
+    assert not (path / "Thumbs.db").exists()
+    assert (path / "treeinfo.wc").exists()
+
+
+def test_the_fix_never_follows_a_symlink_out_of_the_share(tmp_path, stub_nobody):
+    """A symlink named treeinfo.wc must not make the fix delete whatever it
+    points at - the whitelist decides what may go, not the client."""
+    outside = tmp_path / "important.txt"
+    outside.write_text("keep me")
+    path = share_root(tmp_path)
+    (path / "treeinfo.wc").symlink_to(outside)
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    assert diag._share_checks(st) == []
+    with pytest.raises(SystemOpError):
+        diag.apply_fix(st, "share_tree_cache", "media")
+    assert outside.read_text() == "keep me"
+    assert (path / "treeinfo.wc").is_symlink()
+
+
+def test_fixing_an_unknown_share_is_refused(tmp_path):
+    with pytest.raises(SystemOpError):
+        diag.apply_fix(State(), "share_tree_cache", "ghost")
+
+
+def test_fixing_a_share_with_nothing_left_to_remove_is_refused(tmp_path, stub_nobody):
+    """The file can be gone by the time the button is pressed - someone else
+    cleaned it up, or the page is stale. Saying so beats reporting success."""
+    path = share_root(tmp_path)
+    st = State(shares={"media": Share(name="media", path=str(path))})
+
+    with pytest.raises(SystemOpError):
+        diag.apply_fix(st, "share_tree_cache", "media")
+
+
 # --- mounts -------------------------------------------------------------
 
 def test_disk_mount_uuid_no_longer_resolves_is_crit(monkeypatch):
