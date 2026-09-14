@@ -64,6 +64,14 @@
   "diagfinding.share_wrong_perms.body": "A(z) {path} nem nobody:nogroup 0777. A Samba „force user = nobody” beállítása mellett ez azt jelenti, hogy a kliensek listázni tudják a mappát, de írni nem.",
   "diagfinding.share_wrong_perms.confirm": "Beállítjuk a megosztás tulajdonosát nobody:nogroup-ra, jogait 0777-re. Folytatod?",
 
+  "diagfinding.share_tree_cache.title": "A(z) „{share}” megosztás gyökerében kliensoldali fa-gyorsítótár van: {files}",
+  "diagfinding.share_tree_cache.body": "A(z) {path} gyökerében ott a Total Commander könyvtárfa-gyorsítótára ({files}). A TC ebből olvassa a fastruktúrát ahelyett, hogy a szervert kérdezné, így ha elavul, az azóta létrehozott mappák megnyitása hibaüzenet nélkül meghiúsul - a felhasználó csak egy hangjelzést kap. Szerveroldalon közben semmi nem látszik rosszul: a jogosultságok, az ACL-ek, a Samba beállításai és a hosztról indított smbclient is hibátlan, mert ott tényleg nincs baj. Ráadásul a fájl a megosztáson él, tehát közös állapot: minden TC-vel böngésző kliens ugyanazt az elavult másolatot használja. A javítás törli a fájlt; a TC legközelebb újra létrehozza. Hogy ne térjen vissza, a kliensen a wincmd.ini [Configuration] szakaszának TreeFileLocation kulcsával lehet helyi mappába irányítani a fa-fájlokat.",
+  "diagfinding.share_tree_cache.confirm": "Töröljük a megosztás gyökeréből: {files}. A kliens szükség esetén újra létrehozza. Folytatod?",
+
+  "diagfinding.share_client_clutter.title": "A(z) „{share}” megosztás gyökerében kliensoldali szemétfájlok vannak: {files}",
+  "diagfinding.share_client_clutter.body": "A(z) {path} gyökerében a Finder, illetve az Intéző által hátrahagyott gyorsítótár-fájlok találhatók ({files}). Ezek nem okoznak működési hibát, viszont a kliens gépére valók, nem a közös tárolóra: minden felhasználó látja őket, és bekerülnek a mentésekbe is. A javítás törli őket; a kliens szükség esetén újra létrehozza.",
+  "diagfinding.share_client_clutter.confirm": "Töröljük a megosztás gyökeréből: {files}. A kliens szükség esetén újra létrehozza. Folytatod?",
+
   "diagfinding.share_unknown_user.title": "A(z) „{share}” megosztás egy nem létező felhasználót hivatkozik: {user}",
   "diagfinding.share_unknown_user.body": "A(z) „{user}” felhasználó szerepel a megosztás hozzáférési listáján, de már nincs a felhasználók között. Szerkeszd a megosztást, és vedd ki vagy cseréld le a hivatkozást.",
 
