@@ -287,6 +287,30 @@ def spin_down_now(by_id: str, user: str = Depends(current_user)):
     return {"ok": True, "method": method}
 
 
+@router.post("/spinup/{by_id}")
+def spin_up_now(by_id: str, user: str = Depends(current_user)):
+    """Wake a sleeping disk on purpose.
+
+    The counterpart of the button above: without it a disk that is asleep can
+    only be woken by accident, and the first request to reach it pays several
+    seconds for the privilege.
+
+    No wake_failed event to match SLEEP_FAILED - that one exists because the
+    monitor spins disks down unattended and the log is the only record. A
+    spin-up is always somebody standing in front of the page, and the 409
+    reaches them directly.
+    """
+    disk = _require_disk(by_id)
+    if not disk["rotational"]:
+        raise HTTPException(409, "this device does not spin, so it cannot be spun up")
+    ok, method, detail = disksleep.spin_up(disk["path"])
+    if not ok:
+        raise HTTPException(409, f"could not spin this disk up: {detail}")
+    eventlog.record(by_id, eventlog.WAKE, eventlog.MANUAL, actor=user, detail=detail)
+    monitor.note_manual_wake(by_id)
+    return {"ok": True, "method": method}
+
+
 @router.put("/settings")
 def set_settings(body: DiskSleepSettings):
     with state_store.lock:

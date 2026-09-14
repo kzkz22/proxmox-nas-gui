@@ -80,6 +80,34 @@ def note_manual_sleep(by_id: str, method: Optional[str]) -> None:
     }
 
 
+def note_manual_wake(by_id: str) -> None:
+    """Record a disk as spinning again after somebody pressed the button.
+
+    Two separate jobs. Without the state, the next tick would see the change
+    itself and log a second, external wake for something the API already
+    logged. Without idle_since moving to now, a disk that had been idle for
+    hours before being woken would be handed straight back to the spin-down
+    branch below and stop again within one tick - the button would look
+    broken. Restarting the idle clock is what gives a manual wake the disk's
+    full configured idle time before automatic sleep can take it again.
+    """
+    now = time.time()
+    previous = _tracked.get(by_id) or {}
+    _tracked[by_id] = {
+        "state": sleepconf.ACTIVE,
+        "since": now,
+        "checked": now,
+        "idle_since": now,
+        # Dropped rather than carried over: the counters in the old entry
+        # predate the spin-up, so comparing against them would only produce a
+        # phantom "I/O happened" on the next tick. It re-reads them anyway.
+        "counters": None,
+        "method": previous.get("method"),
+        "we_slept_it": False,
+        "retry_after": 0.0,
+    }
+
+
 def tick() -> None:
     """One pass over every managed disk. Synchronous on purpose - it shells
     out and touches SQLite, so it is run in a worker thread."""
@@ -118,8 +146,13 @@ def tick() -> None:
             })
             # Any change in the completed-request counters means the block
             # layer reached the disk since the last tick, so the idle clock
-            # starts over.
-            if counters is not None and previous.get("counters") != counters:
+            # starts over. Both sides have to be real numbers: the manual
+            # sleep and wake notes park a None there, and reading that as a
+            # change would hand the disk another full idle period it did not
+            # earn - which, after a manual wake, is exactly the window the
+            # user is watching.
+            before = previous.get("counters")
+            if counters is not None and before is not None and before != counters:
                 entry["idle_since"] = now
 
         state_now = disksleep.power_state(disk["path"])

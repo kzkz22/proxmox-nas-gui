@@ -16,9 +16,11 @@ I18N = FRONTEND / "i18n"
 BUNDLES = ("core", "samba", "storage", "diag")
 LANGS = ("en", "hu")
 
-# The full key set before the per-package split. The union of the split files
-# must still equal this, so the split provably lost nothing.
-EXPECTED_KEY_COUNT = 444
+# The full key set before the per-package split, plus every key added since.
+# The union of the split files must still equal this, so the split provably
+# lost nothing. Bump it deliberately when a feature adds keys - 444 at the
+# split, +3 for the manual spin-up button.
+EXPECTED_KEY_COUNT = 447
 
 
 def load(bundle: str, lang: str) -> dict:

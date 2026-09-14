@@ -113,6 +113,73 @@ def test_an_unreadable_power_state_is_unknown_not_a_crash(monkeypatch):
     assert disksleep.power_state("/dev/sdb") == sleepconf.UNKNOWN
 
 
+# --- the spin-up chain ------------------------------------------------------
+
+def test_start_unit_alone_is_enough_for_a_cooperative_drive(monkeypatch):
+    fake = FakeRun(["active/idle"])
+    monkeypatch.setattr(disksleep, "run", fake)
+
+    ok, method, detail = disksleep.spin_up("/dev/sdb")
+
+    assert (ok, method, detail) == (True, "sg_start", "sg_start ok")
+    assert fake.programs == ["sg_start", "hdparm"], "no read needed"
+
+
+def test_a_drive_that_ignores_start_unit_is_woken_by_a_read(monkeypatch):
+    """The reason the read exists: START UNIT can exit 0 and change nothing."""
+    fake = FakeRun(["standby"] * disksleep.SPINUP_CHECKS + ["active/idle"])
+    monkeypatch.setattr(disksleep, "run", fake)
+
+    ok, method, detail = disksleep.spin_up("/dev/sdb")
+
+    assert (ok, method) == (True, "read")
+    assert [p for p in fake.programs if p != "hdparm"] == ["sg_start", "dd"]
+    assert "sg_start: still not spinning" in detail
+
+
+def test_the_read_goes_straight_to_the_platter(monkeypatch):
+    """Without O_DIRECT the page cache could answer and leave the disk asleep."""
+    fake = FakeRun(["active/idle"], failures={"sg_start"})
+    monkeypatch.setattr(disksleep, "run", fake)
+
+    disksleep.spin_up("/dev/sdb")
+
+    read = next(c for c in fake.calls if c[0] == "dd")
+    assert "if=/dev/sdb" in read and "iflag=direct" in read
+
+
+def test_the_spin_up_chain_continues_past_a_missing_tool(monkeypatch):
+    fake = FakeRun(["active/idle"], failures={"sg_start"})
+    monkeypatch.setattr(disksleep, "run", fake)
+
+    ok, method, detail = disksleep.spin_up("/dev/sdb")
+
+    assert (ok, method) == (True, "read")
+    assert "sg_start:" in detail
+
+
+def test_a_drive_that_will_not_spin_up_reports_what_was_tried(monkeypatch):
+    fake = FakeRun(["standby"] * 64)
+    monkeypatch.setattr(disksleep, "run", fake)
+
+    ok, method, detail = disksleep.spin_up("/dev/sdb")
+
+    assert ok is False and method is None
+    assert [p for p in fake.programs if p != "hdparm"] == ["sg_start", "dd"]
+    assert detail.count("still not spinning") == 2
+
+
+def test_an_unreadable_state_is_not_a_successful_spin_up(monkeypatch):
+    """UNKNOWN is not asleep, but it is not evidence of spinning either, and
+    reporting success off it would be inventing good news."""
+    fake = FakeRun(failures={"hdparm"})
+    monkeypatch.setattr(disksleep, "run", fake)
+
+    ok, method, _ = disksleep.spin_up("/dev/sdb")
+
+    assert (ok, method) == (False, None)
+
+
 # --- enumeration ------------------------------------------------------------
 
 LSBLK = json.dumps({"blockdevices": [

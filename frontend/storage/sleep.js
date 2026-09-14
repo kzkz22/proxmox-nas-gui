@@ -132,8 +132,9 @@ function diskCard(d, choices) {
       </select>
       <span class="spacer"></span>
       <button class="small" data-log="${esc(d.by_id)}">${esc(t("sleep.openLog"))}</button>
-      <button class="small ${d.asleep ? "" : "primary"}" data-spindown="${esc(d.by_id)}" ${d.asleep ? "disabled" : ""}>
-        ${esc(t("sleep.spinDownNow"))}</button>
+      ${d.asleep
+        ? `<button class="small primary" data-spinup="${esc(d.by_id)}">${esc(t("sleep.spinUpNow"))}</button>`
+        : `<button class="small primary" data-spindown="${esc(d.by_id)}">${esc(t("sleep.spinDownNow"))}</button>`}
     </div>
     ${d.warnings.length ? warningsHtml(d) : ""}
   </div>`;
@@ -202,6 +203,24 @@ function wireDisks() {
     try {
       const res = await guard(() => api(`/sleep/spindown/${encodeURIComponent(id)}`, { method: "POST" }));
       toast(t("sleep.spunDown", { method: res.method }), "ok");
+      sleepPage();
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+  }));
+
+  // No confirmation here, unlike the spin-down above. That one has a cost the
+  // user should agree to - the next request to the disk waits for it. Waking a
+  // disk is harmless and undone by the idle timer on its own.
+  view().querySelectorAll("[data-spinup]").forEach((btn) => btn.addEventListener("click", async () => {
+    const id = btn.dataset.spinup;
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> ${esc(t("sleep.spinningUp"))}`;
+    try {
+      const res = await guard(() => api(`/sleep/spinup/${encodeURIComponent(id)}`, { method: "POST" }));
+      toast(t("sleep.spunUp", { method: res.method }), "ok");
       sleepPage();
     } finally {
       btn.disabled = false;
