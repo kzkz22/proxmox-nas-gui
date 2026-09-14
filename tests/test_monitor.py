@@ -153,6 +153,44 @@ def test_a_spin_down_by_the_drive_itself_is_marked_external(world):
     assert (rows[0]["event"], rows[0]["reason"]) == (eventlog.SLEEP, eventlog.EXTERNAL)
 
 
+def test_a_manual_wake_is_not_logged_twice(world):
+    """The API records the wake where it happens; without note_manual_wake the
+    next tick would see the state change itself and log a second, external
+    one."""
+    set_policy(900)
+    monitor.tick()
+    world.advance(901)
+    monitor.tick()
+    assert world.state == sleepconf.STANDBY
+
+    world.state = sleepconf.ACTIVE
+    monitor.note_manual_wake(DISK)
+    monitor.tick()
+
+    rows, _ = eventlog.query(disk=DISK, event=eventlog.WAKE)
+    assert rows == []
+
+
+def test_a_manual_wake_gives_the_disk_its_full_idle_time_again(world):
+    """The disk had been idle for hours when it was woken. Carrying that clock
+    over would spin it straight back down and make the button look broken."""
+    set_policy(900)
+    monitor.tick()
+    world.advance(10_000)
+    monitor.tick()
+    assert world.spin_calls, "it went to sleep on the timer, as it should"
+
+    world.state = sleepconf.ACTIVE
+    monitor.note_manual_wake(DISK)
+    world.advance(899)
+    monitor.tick()
+    assert len(world.spin_calls) == 1, "still inside the fresh idle window"
+
+    world.advance(2)
+    monitor.tick()
+    assert len(world.spin_calls) == 2, "and down again once that window passes"
+
+
 def test_our_own_spin_down_is_not_logged_twice(world):
     set_policy(900)
     monitor.tick()

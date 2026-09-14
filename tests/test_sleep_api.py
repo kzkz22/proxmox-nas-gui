@@ -199,6 +199,71 @@ def test_a_failed_spin_down_is_reported_and_logged(
     assert rows[0]["event"] == eventlog.SLEEP_FAILED
 
 
+# --- manual spin-up ---------------------------------------------------------
+
+def test_a_manual_spin_up_is_logged_with_the_user(
+    auth_client, sandbox, disks, monkeypatch
+):
+    monkeypatch.setattr(disksleep, "spin_up",
+                        lambda path: (True, "read", "sg_start: still not spinning; read ok"))
+
+    response = auth_client.post(f"/api/sleep/spinup/{TOSHIBA}")
+
+    assert response.status_code == 200
+    assert response.json()["method"] == "read"
+    rows, _ = eventlog.query(disk=TOSHIBA)
+    assert rows[0]["event"] == eventlog.WAKE
+    assert rows[0]["reason"] == eventlog.MANUAL
+    assert rows[0]["actor"] == "root"
+
+
+def test_a_manual_spin_up_restarts_the_idle_clock(
+    auth_client, sandbox, disks, monkeypatch
+):
+    """Otherwise the monitor would take a long-idle disk straight back down
+    and the button would look like it did nothing."""
+    monkeypatch.setattr(disksleep, "spin_up", lambda path: (True, "sg_start", "ok"))
+    monitor._tracked[TOSHIBA] = {
+        "state": sleepconf.STANDBY, "since": 0.0, "checked": 0.0,
+        "idle_since": 0.0, "counters": (1, 2), "method": "sg_start",
+        "we_slept_it": True, "retry_after": 0.0,
+    }
+
+    auth_client.post(f"/api/sleep/spinup/{TOSHIBA}")
+
+    entry = monitor._tracked[TOSHIBA]
+    assert entry["state"] == sleepconf.ACTIVE
+    assert entry["idle_since"] > 0.0
+    assert entry["we_slept_it"] is False
+
+
+def test_a_failed_spin_up_is_reported_and_leaves_no_wake_in_the_log(
+    auth_client, sandbox, disks, monkeypatch
+):
+    """A disk that refused to come back is not a wake, whatever the log would
+    look tidier with."""
+    monkeypatch.setattr(disksleep, "spin_up",
+                        lambda path: (False, None, "both methods failed"))
+
+    response = auth_client.post(f"/api/sleep/spinup/{TOSHIBA}")
+
+    assert response.status_code == 409
+    assert "both methods failed" in response.json()["detail"]
+    rows, _ = eventlog.query(disk=TOSHIBA)
+    assert rows == []
+
+
+def test_an_ssd_cannot_be_spun_up(auth_client, sandbox, disks):
+    assert auth_client.post(f"/api/sleep/spinup/{SSD}").status_code == 409
+
+
+def test_spinning_up_an_unknown_disk_is_rejected(auth_client, sandbox, disks):
+    assert auth_client.post("/api/sleep/spinup/ata-NOT_HERE_123").status_code == 404
+    # Rejected by the id pattern before any disk lookup: a by-id name is
+    # model plus serial and never starts with punctuation.
+    assert auth_client.post("/api/sleep/spinup/-etc-passwd").status_code == 400
+
+
 # --- the event log endpoint -------------------------------------------------
 
 def test_events_are_served_with_filters_and_paging(auth_client, sandbox, disks):

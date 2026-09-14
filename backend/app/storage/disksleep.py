@@ -14,7 +14,7 @@ for every drive.
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from ..core.proc import SystemOpError, run
 from ..models import State
@@ -34,6 +34,28 @@ SPINDOWN_METHODS: Tuple[Tuple[str, List[str]], ...] = (
 # state it was still in.
 SPINDOWN_SETTLE = 3
 SPINDOWN_TIMEOUT = 20
+
+# The other direction. sg_start --start is SCSI START UNIT, the exact partner
+# of the --stop above. Whatever does not answer it is woken by a real read
+# instead: the block layer cannot hand back a sector off a stopped motor.
+# O_DIRECT is what makes that true - without it the page cache could satisfy
+# the read without the drive ever hearing about it. Both commands only read.
+#
+# The device path lands in the middle of the dd command rather than at the
+# end, so each entry builds its own argv instead of having the path appended.
+SPINUP_METHODS: Tuple[Tuple[str, Callable[[str], List[str]]], ...] = (
+    ("sg_start", lambda path: ["sg_start", "--start", path]),
+    ("read", lambda path: ["dd", f"if={path}", "of=/dev/null",
+                           "bs=4096", "count=1", "iflag=direct"]),
+)
+# Spinning a platter back up takes longer than stopping it - five to ten
+# seconds is normal - so the state is polled rather than sampled once. The
+# count is a count, not a deadline, because a wall-clock loop with the sleep
+# stubbed out (as the tests do) would spin.
+SPINUP_TIMEOUT = 30
+SPINUP_SETTLE = 2
+SPINUP_POLL = 2
+SPINUP_CHECKS = 8
 
 SMARTD_UNIT = "smartd"
 HD_IDLE_UNIT = "hd-idle"
@@ -239,6 +261,41 @@ def spin_down(path: str, preferred: Optional[str] = None) -> Tuple[bool, Optiona
             return True, name, detail
         tried.append(f"{name}: no standby")
     return False, None, "; ".join(tried) or "no spin-down method available"
+
+
+def spin_up(path: str) -> Tuple[bool, Optional[str], str]:
+    """Bring a sleeping disk back up. Returns (ok, method that worked, detail).
+
+    The mirror image of spin_down, verification included: a START UNIT that
+    exits 0 is no more evidence than a STANDBY IMMEDIATE that did. Success is
+    hdparm -C reporting ACTIVE specifically - not merely "not asleep", because
+    a drive whose state cannot be read reports UNKNOWN, and calling that a
+    successful spin-up would be inventing good news.
+    """
+    tried = []
+    for name, build in SPINUP_METHODS:
+        try:
+            run(build(path), timeout=SPINUP_TIMEOUT)
+        except SystemOpError as exc:
+            tried.append(f"{name}: {exc}")
+            continue
+        if _wait_for_active(path):
+            detail = f"{name} ok"
+            if tried:
+                detail = "; ".join(tried) + f"; {name} ok"
+            return True, name, detail
+        tried.append(f"{name}: still not spinning")
+    return False, None, "; ".join(tried) or "no spin-up method available"
+
+
+def _wait_for_active(path: str) -> bool:
+    time.sleep(SPINUP_SETTLE)
+    for attempt in range(SPINUP_CHECKS):
+        if power_state(path) == sleepconf.ACTIVE:
+            return True
+        if attempt < SPINUP_CHECKS - 1:
+            time.sleep(SPINUP_POLL)
+    return False
 
 
 # --- what keeps a disk awake ------------------------------------------------
