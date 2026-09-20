@@ -24,6 +24,9 @@ FRONTEND = ROOT / "frontend"
 # Allowed to reach into both halves - that is their job.
 COMPOSITION_ROOTS = {
     BACKEND / "models.py",
+    # Says so in its own docstring: a check can legitimately need a pool's
+    # branches and a Samba service's state, and neither half owns both.
+    BACKEND / "diagnostics.py",
     BACKEND / "routes.py",
     BACKEND / "state_view.py",
     FRONTEND / "main.js",

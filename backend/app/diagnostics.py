@@ -19,6 +19,11 @@ deleted; and a stale client-side cache file left in a share root, which breaks
 browsing in a way no server-side check can see. All three happened once
 already; see storage/pools.py orphaned_binds(), storage/api/binds.py's
 create_source() calling apply_share_perms, and TREE_CACHE_FILES below.
+
+A fourth since joined them, from the other half: wsdd2 publishing the host's
+link-local IPv6 over LLMNR, which makes Windows pay a TCP timeout on every
+name lookup and fail intermittently with 0x80070035 - while smbd, the shares,
+the permissions and the firewall all check out. See samba/discovery.py.
 """
 
 import grp
@@ -27,9 +32,10 @@ import pwd
 import stat
 from typing import Callable, Dict, List
 
-from .core import fsops
+from .core import fsops, systemd
 from .core.proc import SystemOpError
 from .models import State
+from .samba import discovery
 from .storage import bindconf, disksleep, mergerfs_env, poolconf
 from .storage import binds as bind_ops
 from .storage import pools as pool_ops
@@ -338,6 +344,40 @@ def _unit_checks(state: State) -> List[dict]:
     return out
 
 
+def _network_checks(state: State) -> List[dict]:
+    """Whether a Windows client can find this host, and by a usable address.
+
+    Takes no state: unlike every other category these are properties of the
+    host's services rather than of anything the GUI stores. The argument is
+    kept for a uniform signature in run_all.
+    """
+    out: List[dict] = []
+    if discovery.wsdd2_publishes_ipv6():
+        out.append(_finding(
+            "wsdd2_publishes_ipv6", "network", "wsdd2", "warn", True,
+            {"interfaces": ", ".join(discovery.link_local_ipv6_interfaces())},
+            # Spelled out on one line rather than interpolating DROPIN_TEXT:
+            # the UI offers this for copy-paste, and an embedded newline
+            # would leave half of it behind.
+            command=(
+                f"install -d {discovery.dropin_path().parent} && "
+                f"printf '[Service]\\nExecStart=\\nExecStart=/usr/sbin/wsdd2 -4\\n'"
+                f" > {discovery.dropin_path()} && "
+                "systemctl daemon-reload && systemctl restart wsdd2"
+            ),
+        ))
+    for unit in discovery.DISCOVERY_UNITS:
+        # An uninstalled unit is a deliberate choice on someone's part, or a
+        # host that never ran the installer; either way it is not a fault.
+        if discovery.unit_is_installed(unit) and not discovery.unit_is_active(unit):
+            out.append(_finding(
+                "discovery_unit_inactive", "network", unit, "warn", True,
+                {"unit": unit},
+                command=f"systemctl enable --now {unit}",
+            ))
+    return out
+
+
 def _disk_checks(state: State) -> List[dict]:
     """Folds in disksleep's existing per-disk warnings verbatim - no
     duplicated logic, no duplicated i18n strings (the frontend reuses the
@@ -355,7 +395,7 @@ def run_all(state: State) -> List[dict]:
     findings = [
         *_mergerfs_checks(state), *_pool_checks(state), *_bind_checks(state),
         *_share_checks(state), *_mount_checks(state), *_unit_checks(state),
-        *_disk_checks(state),
+        *_network_checks(state), *_disk_checks(state),
     ]
     return sorted(findings, key=lambda f: (
         _SEVERITY_ORDER.get(f["severity"], 3), f["category"], f["id"], f["entity"],
@@ -509,6 +549,36 @@ def _fix_pool_passthrough(state: State, entity: str) -> str:
     return f"pool {entity}: {', '.join(changed)}; remounted"
 
 
+def _fix_wsdd2_ipv4_only(state: State, entity: str) -> str:
+    """Install the -4 drop-in and restart wsdd2, reverting if it will not run.
+
+    Same self-healing shape as the installer: a wsdd2 build that does not know
+    the flag would fail to start, and a host with no discovery at all is worse
+    off than one publishing an address Windows has to time out on.
+    """
+    path = discovery.write_ipv4_only_dropin()
+    systemd.systemctl("daemon-reload")
+    systemd.systemctl("restart", "wsdd2")
+    if not discovery.unit_is_active("wsdd2"):
+        path.unlink(missing_ok=True)
+        systemd.systemctl("daemon-reload")
+        systemd.systemctl("restart", "wsdd2")
+        raise SystemOpError(
+            "wsdd2 did not accept -4; the packaged unit has been restored"
+        )
+    return f"wsdd2 restricted to IPv4 via {path}; restarted"
+
+
+def _fix_discovery_unit(state: State, entity: str) -> str:
+    # entity arrives from the HTTP request, so it is checked against the
+    # known units rather than handed to systemctl as given.
+    if entity not in discovery.DISCOVERY_UNITS:
+        raise SystemOpError(f"not a discovery unit: {entity}")
+    if not systemd.systemctl("enable", "--now", entity):
+        raise SystemOpError(f"could not start {entity}")
+    return f"{entity} enabled and started"
+
+
 FIXABLE: Dict[str, Callable[[State, str], str]] = {
     "pool_not_mounted": _fix_pool_not_mounted,
     "bind_not_mounted": _fix_bind_not_mounted,
@@ -523,6 +593,8 @@ FIXABLE: Dict[str, Callable[[State, str], str]] = {
     "bind_unit_missing": _fix_bind_unit,
     "pool_needs_remount": _remount_pool,
     "pool_passthrough_available": _fix_pool_passthrough,
+    "wsdd2_publishes_ipv6": _fix_wsdd2_ipv4_only,
+    "discovery_unit_inactive": _fix_discovery_unit,
 }
 
 # Fixes that change the saved configuration rather than only acting on the

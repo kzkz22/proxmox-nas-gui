@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import List, Optional
 
 from ..core.proc import SystemOpError, run
+# Re-exported: these used to live here, and the rest of the storage
+# package still reaches them as pools.systemctl() and friends.
+from ..core.systemd import has_systemd, systemctl, systemd_dir  # noqa: F401
 from ..models import State
 from . import poolconf
 from .models import Pool
@@ -30,35 +33,6 @@ def write_fstab(text: str) -> None:
     tmp.write_text(text)
     os.replace(tmp, p)
     subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=30)
-
-
-def systemd_dir() -> Path:
-    return Path(os.environ.get("PNAS_SYSTEMD_DIR", "/etc/systemd/system"))
-
-
-def has_systemd() -> bool:
-    """Whether the host is actually running systemd.
-
-    Callers that must not silently substitute a plain mount for a unit start
-    (see binds.mount_bind) need to tell "systemd refused" apart from "there is
-    no systemd here", which the boolean below cannot express.
-    """
-    return Path("/run/systemd/system").is_dir()
-
-
-def systemctl(*args: str) -> bool:
-    """Best-effort systemctl; False when systemd is absent or the call failed.
-
-    Public within the storage package: the bind mounts install units the same
-    way pools do, so both go through this one wrapper.
-    """
-    try:
-        proc = subprocess.run(
-            ["systemctl", *args], capture_output=True, text=True, timeout=60
-        )
-        return proc.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
 
 
 def write_pool_unit(pool: Pool) -> None:

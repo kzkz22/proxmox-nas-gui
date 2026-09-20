@@ -19,6 +19,7 @@
   "diagcat.shares": "Shares",
   "diagcat.mounts": "Disk mounts",
   "diagcat.units": "Systemd units",
+  "diagcat.network": "Windows discovery",
   "diagcat.disks": "Disk sleep",
 
   "diagfinding.pool_branch_missing.title": "Pool “{pool}” has an unreachable branch: {path}",
@@ -95,5 +96,13 @@
 
   "diagfinding.bind_unit_missing.title": "Bind mount “{bind}”'s systemd unit is missing",
   "diagfinding.bind_unit_missing.body": "The bind mount is configured in the app, but its systemd unit file is not on disk, so it will not mount automatically on the next boot.",
-  "diagfinding.bind_unit_missing.confirm": "The systemd unit will be rewritten, and the bind mount mounted if it isn't already. Continue?"
+  "diagfinding.bind_unit_missing.confirm": "The systemd unit will be rewritten, and the bind mount mounted if it isn't already. Continue?",
+
+  "diagfinding.wsdd2_publishes_ipv6.title": "wsdd2 is publishing this host's link-local IPv6 address ({interfaces})",
+  "diagfinding.wsdd2_publishes_ipv6.body": "wsdd2 answers LLMNR name queries as well as WS-Discovery, and without “-4” it replies with every address on the interface - including the link-local IPv6 on {interfaces}. Windows prefers that AAAA answer, cannot route an fe80:: address without a zone id, and only falls back to IPv4 once the TCP connect times out. Expect intermittent 0x80070035 (“the network path was not found”) when opening \\\\<host>, and multi-second stalls at startup in any application that touches a mapped drive. The fix installs a systemd drop-in restricting wsdd2 to IPv4; discovery keeps working.",
+  "diagfinding.wsdd2_publishes_ipv6.confirm": "wsdd2 will be restricted to IPv4 and restarted. If this build does not know the option, the change is undone and the packaged unit restored. Continue?",
+
+  "diagfinding.discovery_unit_inactive.title": "{unit} is installed but not running",
+  "diagfinding.discovery_unit_inactive.body": "The shares stay reachable by typing \\\\<host>\\<share>, but this host will not appear when browsing the network. nmbd serves NetBIOS name lookups and the browse list for older clients, wsdd2 the WS-Discovery that Windows 10 and 11 use since SMB1 was removed - both are wanted, neither replaces the other.",
+  "diagfinding.discovery_unit_inactive.confirm": "{unit} will be enabled and started. Continue?"
 }

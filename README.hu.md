@@ -26,7 +26,13 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
   `nmbd`-t (NetBIOS böngészés) és a `wsdd2`-t (WS-Discovery) is elindítja,
   hogy a gép megjelenjen a Windows Intéző "Hálózat" nézetében — enélkül a
   megosztások `\\<IP>\<megosztás>` útvonallal kézzel elérhetők, csak a
-  böngészős lista nem mutatja a gépet
+  böngészős lista nem mutatja a gépet. A `wsdd2` IPv4-re van korlátozva (`-4`
+  kapcsoló systemd drop-inban), mert LLMNR névkérésekre is válaszol, és
+  egyébként a gép link-local IPv6 címét adná vissza; a Windows ezt az AAAA
+  választ részesíti előnyben, útvonalat viszont nem talál hozzá, és csak a TCP
+  timeout után esik vissza IPv4-re — ez időnkénti `0x80070035` hibaként és a
+  csatolt meghajtót érintő alkalmazások több másodperces akadásaként jelenik
+  meg
 - **Biztonsági módok** (az Unraid pontos megfelelői):
   - **Publikus** — bárki, jelszó nélkül, írás/olvasás
   - **Védett (Secure)** — vendégek olvashatnak, írásjog felhasználónként /
@@ -261,7 +267,8 @@ partíciónak nincs csatolási pontja, tehát az első kettő nem fogná ki.
 ### Diagnosztika
 
 Egy gombbal végigfut minden ellenőrzés a poolokon, bind mountokon,
-megosztásokon, diszk-mountokon, systemd egységeken és a lemezalváson. Amit
+megosztásokon, diszk-mountokon, systemd egységeken, a Windows-os felderítésen
+és a lemezalváson. Amit
 biztonságosan meg lehet javítani, azt egy gomb el is végzi (a többinél a
 kimásolható parancs jelenik meg).
 
@@ -295,6 +302,24 @@ jelentkeznek, hanem csak lassúságként:
   a kliensre valók. A javítás a megosztás gyökeréből törli őket (és csak
   onnan — nincs rekurzió, csak a felsorolt nevek), a kliens pedig
   újra létrehozza, ha kell
+
+És kettő arra az esetre, amikor a Windows nem, vagy csak lassan találja meg a
+gépet:
+
+- **A wsdd2 a link-local IPv6 címet hirdeti**: a wsdd2 nem csak
+  WS-Discovery-t szolgál ki, hanem LLMNR névkérésekre is válaszol, és `-4`
+  nélkül az interfész összes címét visszaadja. A Windows az `fe80::` kezdetű
+  AAAA választ részesíti előnyben, zóna-azonosító nélkül viszont nem talál
+  hozzá útvonalat, és csak a TCP timeout után esik vissza IPv4-re — így a
+  `\\<gép>` időnként `0x80070035` hibával ("a hálózati elérési út nem
+  található") elszáll, és minden csatolt meghajtóhoz nyúló alkalmazás
+  másodperceket vár indulásnál, miközben szerveroldalon minden ellenőrzés
+  tisztának látszik. A javítás telepíti a `-4` drop-int és újraindítja a
+  wsdd2-t, majd visszavonja, ha az adott build nem ismeri a kapcsolót. Csak
+  olyan gépen jelenik meg, ahol tényleg van hirdethető link-local cím
+- **Az nmbd vagy a wsdd2 telepítve van, de nem fut**: a megosztások UNC
+  útvonallal továbbra is elérhetők, de a gép nem jelenik meg a hálózat
+  tallózásakor
 
 ![Diagnosztika](docs/hu/diag.png)
 

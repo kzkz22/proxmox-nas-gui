@@ -4,7 +4,7 @@ import { $, esc, toast, view } from "../core/dom.js";
 import { t } from "../core/i18n.js";
 
 /** Fixed display order, independent of whatever order findings arrive in. */
-const CATEGORIES = ["pools", "binds", "shares", "mounts", "units", "disks"];
+const CATEGORIES = ["pools", "binds", "shares", "mounts", "units", "network", "disks"];
 
 export async function diagList() {
   view().innerHTML = `

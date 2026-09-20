@@ -26,7 +26,12 @@ Unraid array), and share it immediately.
   browsing) and `wsdd2` (WS-Discovery) alongside `smbd`, so the host actually
   shows up in Windows Explorer's "Network" view — without them the shares are
   still reachable by typing `\\<IP>\<share>`, they just don't appear in the
-  browse list
+  browse list. `wsdd2` is pinned to IPv4 (a systemd drop-in passing `-4`),
+  because it also answers LLMNR name queries and would otherwise hand Windows
+  the host's link-local IPv6 address; Windows prefers that AAAA answer, cannot
+  route it, and only falls back to IPv4 after a TCP timeout — which shows up
+  as an intermittent `0x80070035` on `\\<host>` and multi-second stalls in any
+  application that touches a mapped drive
 - **Security modes** (exact equivalents of Unraid's):
   - **Public** — anyone, no password, read/write
   - **Secure** — guests can read, write access is granted per user/group
@@ -258,8 +263,8 @@ has no mountpoint at all, so the first two wouldn't catch it.
 ### Diagnostics
 
 One button runs every check across the pools, bind mounts, shares, disk
-mounts, systemd units and disk sleep. Whatever can be fixed safely, a button
-fixes; for everything else, a copyable command is shown.
+mounts, systemd units, Windows discovery and disk sleep. Whatever can be fixed
+safely, a button fixes; for everything else, a copyable command is shown.
 
 The performance-related checks, because these don't show up as errors, only
 as slowness:
@@ -290,6 +295,21 @@ And one check for a problem that is invisible from the server side entirely:
   belong on the client. The fix deletes them from the share root (and only
   from there — no recursion, whitelist only), and the client recreates them if
   it wants them
+
+And two for a host Windows can't find, or can only find slowly:
+
+- **wsdd2 is publishing the link-local IPv6 address**: wsdd2 answers LLMNR
+  name queries as well as WS-Discovery, and without `-4` it replies with every
+  address on the interface. Windows prefers the `fe80::` AAAA answer, can't
+  route it without a zone id, and only falls back to IPv4 once the TCP connect
+  times out — so `\\<host>` fails intermittently with `0x80070035` ("the
+  network path was not found") and anything that touches a mapped drive stalls
+  for seconds at startup, while every server-side check looks perfectly clean.
+  The fix installs the `-4` drop-in and restarts wsdd2, reverting if that
+  build doesn't know the option. Only reported on a host that actually has a
+  link-local address to publish
+- **nmbd or wsdd2 installed but not running**: the shares stay reachable by
+  UNC path, but the host won't appear when browsing the network
 
 ![Diagnostics](docs/en/diag.png)
 
