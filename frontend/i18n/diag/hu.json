@@ -19,6 +19,7 @@
   "diagcat.shares": "Megosztások",
   "diagcat.mounts": "Lemez csatolások",
   "diagcat.units": "Systemd egységek",
+  "diagcat.network": "Windows-os felderítés",
   "diagcat.disks": "Lemezalvás",
 
   "diagfinding.pool_branch_missing.title": "A(z) „{pool}” pool egyik branch-e nem érhető el: {path}",
@@ -95,5 +96,13 @@
 
   "diagfinding.bind_unit_missing.title": "A(z) „{bind}” bind mount systemd egysége hiányzik",
   "diagfinding.bind_unit_missing.body": "A bind mount konfigurálva van az alkalmazásban, de a hozzá tartozó systemd egység fájl nincs a lemezen, ezért újraindításkor nem fog automatikusan felcsatolódni.",
-  "diagfinding.bind_unit_missing.confirm": "Újraírjuk a systemd egységet, és felcsatoljuk a bind mountot, ha még nincs. Folytatod?"
+  "diagfinding.bind_unit_missing.confirm": "Újraírjuk a systemd egységet, és felcsatoljuk a bind mountot, ha még nincs. Folytatod?",
+
+  "diagfinding.wsdd2_publishes_ipv6.title": "A wsdd2 a gép link-local IPv6 címét hirdeti ({interfaces})",
+  "diagfinding.wsdd2_publishes_ipv6.body": "A wsdd2 nem csak WS-Discovery-t szolgál ki, hanem LLMNR névkérésekre is válaszol, és „-4” nélkül az interfész összes címét visszaadja - beleértve a link-local IPv6-ot ezen: {interfaces}. A Windows ezt az AAAA választ részesíti előnyben, egy fe80:: címhez viszont zóna-azonosító nélkül nem talál útvonalat, és csak a TCP timeout után esik vissza IPv4-re. Ebből időnkénti 0x80070035 („a hálózati elérési út nem található”) lesz a \\\\<gép> megnyitásakor, és több másodperces akadás minden olyan alkalmazás indulásánál, ami csatolt meghajtóhoz nyúl. A javítás egy systemd drop-int telepít, ami IPv4-re korlátozza a wsdd2-t; a felderítés továbbra is működik.",
+  "diagfinding.wsdd2_publishes_ipv6.confirm": "A wsdd2 IPv4-re lesz korlátozva és újraindul. Ha ez a build nem ismeri a kapcsolót, a változtatás visszavonódik és a csomagolt unit áll vissza. Folytatod?",
+
+  "diagfinding.discovery_unit_inactive.title": "A(z) {unit} telepítve van, de nem fut",
+  "diagfinding.discovery_unit_inactive.body": "A megosztások \\\\<gép>\\<megosztás> útvonallal továbbra is elérhetők, de a gép nem jelenik meg a hálózat tallózásakor. Az nmbd a NetBIOS névfeloldást és a böngészőlistát szolgálja ki a régebbi klienseknek, a wsdd2 pedig azt a WS-Discovery-t, amit a Windows 10 és 11 használ az SMB1 eltávolítása óta - mindkettő kell, egyik sem helyettesíti a másikat.",
+  "diagfinding.discovery_unit_inactive.confirm": "A(z) {unit} engedélyeződik és elindul. Folytatod?"
 }
