@@ -115,7 +115,38 @@ systemctl enable --now smbd
 # shows up in Windows' Network view - only a direct \\host\share UNC path
 # works. Both together cover older and newer Windows versions.
 systemctl enable --now nmbd
-systemctl enable --now wsdd2
+# wsdd2 answers LLMNR name queries as well as WS-Discovery, and by default it
+# replies with every address on the interface - including the link-local IPv6
+# (fe80::...). Windows prefers the AAAA answer, so its SMB redirector tries an
+# address that cannot be routed without a zone id and only falls back to IPv4
+# once the TCP connect times out. The result is an intermittent 0x80070035
+# ("the network path was not found") on \\host, and multi-second stalls in
+# every application that so much as enumerates a mapped drive. Restricting
+# wsdd2 to IPv4 keeps discovery working and drops the unusable AAAA.
+if [[ -x /usr/sbin/wsdd2 ]]; then
+    install -d /etc/systemd/system/wsdd2.service.d
+    cat > /etc/systemd/system/wsdd2.service.d/ipv4-only.conf <<'EOF'
+# Managed by proxmox-nas-gui - see deploy/install.sh
+[Service]
+ExecStart=
+ExecStart=/usr/sbin/wsdd2 -4
+EOF
+    systemctl daemon-reload
+fi
+# "|| true" because the whole point of the check below is to react to a
+# wsdd2 that refuses to start, and set -e would abort the installer first.
+systemctl enable wsdd2
+systemctl restart wsdd2 || true
+# Older wsdd2 builds may not know -4. Rather than leave the host with no
+# discovery at all, drop the override and fall back to the packaged command.
+if [[ -e /etc/systemd/system/wsdd2.service.d/ipv4-only.conf ]] \
+   && ! systemctl is-active --quiet wsdd2; then
+    echo "    wsdd2 rejected -4; reverting to the packaged unit" >&2
+    rm -f /etc/systemd/system/wsdd2.service.d/ipv4-only.conf
+    rmdir --ignore-fail-on-non-empty /etc/systemd/system/wsdd2.service.d
+    systemctl daemon-reload
+    systemctl restart wsdd2
+fi
 # "enable --now" only starts a stopped unit, so re-running the installer would
 # leave the previous process serving the old code. Restart explicitly.
 systemctl enable proxmox-nas-gui

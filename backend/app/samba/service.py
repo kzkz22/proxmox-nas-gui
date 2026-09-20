@@ -30,17 +30,69 @@ def _master_without_include(text: str) -> str:
     return "\n".join(lines)
 
 
+def _global_end(lines: list[str]) -> int | None:
+    """Index of the line just past the [global] section, or None if absent.
+
+    Trailing blank lines are treated as the gap before the next section
+    rather than part of [global], so the include lands directly under the
+    last real parameter and re-running this leaves the file byte-identical.
+    """
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip().lower() == "[global]":
+            start = i
+            break
+    if start is None:
+        return None
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            end = i
+            break
+    while end > start + 1 and not lines[end - 1].strip():
+        end -= 1
+    return end
+
+
+def _with_include(text: str) -> str:
+    """smb.conf content with the include line anchored inside [global]."""
+    want = _include_line()
+    # Strip every existing copy first, so a line an older version appended to
+    # the end of the file is migrated rather than duplicated.
+    lines = [line for line in text.splitlines() if line.strip() != want]
+    at = _global_end(lines)
+    if at is None:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append("[global]")
+        at = len(lines)
+    lines.insert(at, "    " + want)
+    return "\n".join(lines) + "\n"
+
+
 def ensure_include() -> None:
+    """Make sure smb.conf pulls in the generated file, from inside [global].
+
+    Appending the line to the end of the file - the obvious approach, and what
+    this used to do - drops it inside whichever section happens to come last,
+    which on a stock Debian smb.conf is [print$]. Samba still applies the
+    generated globals, because the included file opens with its own [global]
+    header and that switches the context back, so the old placement worked by
+    accident. It stops working the moment the master file grows a new trailing
+    section, and it reads as a bug to anyone running testparm. Anchoring the
+    line to [global] makes the placement mean what it says, and existing
+    installs are migrated in place the next time the config is applied.
+    """
     conf = smb_conf_path()
     text = conf.read_text() if conf.exists() else "[global]\n"
-    if _include_line() in (line.strip() for line in text.splitlines()):
+    updated = _with_include(text)
+    if updated == text:
         return
     backup = conf.with_name(conf.name + BACKUP_SUFFIX)
     if conf.exists() and not backup.exists():
         backup.write_text(text)
-    if not text.endswith("\n"):
-        text += "\n"
-    conf.write_text(text + _include_line() + "\n")
+    conf.write_text(updated)
 
 
 def validate(generated: str) -> None:

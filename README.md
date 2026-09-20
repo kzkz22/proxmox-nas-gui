@@ -26,7 +26,12 @@ Unraid array), and share it immediately.
   browsing) and `wsdd2` (WS-Discovery) alongside `smbd`, so the host actually
   shows up in Windows Explorer's "Network" view — without them the shares are
   still reachable by typing `\\<IP>\<share>`, they just don't appear in the
-  browse list
+  browse list. `wsdd2` is pinned to IPv4 (a systemd drop-in passing `-4`),
+  because it also answers LLMNR name queries and would otherwise hand Windows
+  the host's link-local IPv6 address; Windows prefers that AAAA answer, cannot
+  route it, and only falls back to IPv4 after a TCP timeout — which shows up
+  as an intermittent `0x80070035` on `\\<host>` and multi-second stalls in any
+  application that touches a mapped drive
 - **Security modes** (exact equivalents of Unraid's):
   - **Public** — anyone, no password, read/write
   - **Secure** — guests can read, write access is granted per user/group

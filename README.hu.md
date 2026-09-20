@@ -26,7 +26,13 @@ fájlrendszerré (mint az Unraid array), és azt azonnal megoszthatod.
   `nmbd`-t (NetBIOS böngészés) és a `wsdd2`-t (WS-Discovery) is elindítja,
   hogy a gép megjelenjen a Windows Intéző "Hálózat" nézetében — enélkül a
   megosztások `\\<IP>\<megosztás>` útvonallal kézzel elérhetők, csak a
-  böngészős lista nem mutatja a gépet
+  böngészős lista nem mutatja a gépet. A `wsdd2` IPv4-re van korlátozva (`-4`
+  kapcsoló systemd drop-inban), mert LLMNR névkérésekre is válaszol, és
+  egyébként a gép link-local IPv6 címét adná vissza; a Windows ezt az AAAA
+  választ részesíti előnyben, útvonalat viszont nem talál hozzá, és csak a TCP
+  timeout után esik vissza IPv4-re — ez időnkénti `0x80070035` hibaként és a
+  csatolt meghajtót érintő alkalmazások több másodperces akadásaként jelenik
+  meg
 - **Biztonsági módok** (az Unraid pontos megfelelői):
   - **Publikus** — bárki, jelszó nélkül, írás/olvasás
   - **Védett (Secure)** — vendégek olvashatnak, írásjog felhasználónként /
